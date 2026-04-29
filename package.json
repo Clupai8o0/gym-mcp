@@ -1,0 +1,20 @@
+{
+  "name": "workout-tracker-mcp",
+  "version": "1.0.0",
+  "description": "MCP server exposing a Supabase-backed workout tracker over Streamable HTTP for claude.ai",
+  "private": true,
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "latest",
+    "@supabase/supabase-js": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "typescript": "latest",
+    "@types/node": "latest",
+    "vercel": "latest"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "dev": "vercel dev"
+  }
+}
