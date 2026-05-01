@@ -3,9 +3,9 @@
 create extension if not exists "pgcrypto";
 
 -- =========================================================================
--- api_tokens — one row per user / access token
+-- access_tokens — one row per user / access token
 -- =========================================================================
-create table if not exists public.api_tokens (
+create table if not exists public.access_tokens (
   id         uuid primary key default gen_random_uuid(),
   token      text not null unique,
   user_id    text not null,
@@ -14,8 +14,8 @@ create table if not exists public.api_tokens (
   created_at timestamptz not null default now()
 );
 
-create index if not exists api_tokens_token_idx   on public.api_tokens (token);
-create index if not exists api_tokens_user_id_idx on public.api_tokens (user_id);
+create index if not exists access_tokens_token_idx   on public.access_tokens (token);
+create index if not exists access_tokens_user_id_idx on public.access_tokens (user_id);
 
 -- =========================================================================
 -- Add user_id to all data tables
@@ -57,4 +57,4 @@ alter table public.skill_progressions
 -- =========================================================================
 -- Grant PostgREST access to the new table
 -- =========================================================================
-grant all on public.api_tokens to postgres, anon, authenticated, service_role;
+grant all on public.access_tokens to postgres, anon, authenticated, service_role;

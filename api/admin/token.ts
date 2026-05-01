@@ -64,7 +64,7 @@ export default async function handler(
 
     const supabase = getSupabase();
     const { data, error } = await supabase
-      .from("api_tokens")
+      .from("access_tokens")
       .insert({ token, user_id: userId, name, is_beta: isBeta })
       .select("id, user_id, name, is_beta, created_at")
       .single();

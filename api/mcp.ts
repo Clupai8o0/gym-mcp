@@ -50,7 +50,7 @@ async function resolveUser(req: IncomingMessage): Promise<string | null> {
 
   const supabase = getSupabase();
   const { data, error } = await supabase
-    .from("api_tokens")
+    .from("access_tokens")
     .select("user_id, is_beta")
     .eq("token", token)
     .single();
