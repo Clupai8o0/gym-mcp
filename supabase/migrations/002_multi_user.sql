@@ -58,3 +58,4 @@ alter table public.skill_progressions
 -- Grant PostgREST access to the new table
 -- =========================================================================
 grant all on public.access_tokens to postgres, anon, authenticated, service_role;
+alter table public.access_tokens disable row level security;
