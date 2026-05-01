@@ -21,20 +21,20 @@ type LogSetInput = {
   notes?: string;
 };
 
-async function detectPr(input: LogSetInput): Promise<DetectedPr> {
+async function detectPr(input: LogSetInput, userId: string): Promise<DetectedPr> {
   const supabase = getSupabase();
 
   const { data: existing, error } = await supabase
     .from("personal_records")
     .select("pr_type, value")
-    .eq("exercise_name", input.exercise_name);
+    .eq("exercise_name", input.exercise_name)
+    .eq("user_id", userId);
 
   if (error) throw error;
 
   const records = new Map<string, number>();
   for (const r of existing ?? []) records.set(r.pr_type, Number(r.value));
 
-  // Hold-time PR
   if (input.hold_seconds !== undefined && input.hold_seconds !== null) {
     const best = records.get("hold_time");
     if (best === undefined || input.hold_seconds > best) {
@@ -47,7 +47,6 @@ async function detectPr(input: LogSetInput): Promise<DetectedPr> {
     }
   }
 
-  // Weight / reps PR
   if (
     input.weight_kg !== undefined &&
     input.weight_kg !== null &&
@@ -75,10 +74,8 @@ async function detectPr(input: LogSetInput): Promise<DetectedPr> {
     }
   }
 
-  // First log for this exercise
   if ((existing?.length ?? 0) === 0) {
-    const first =
-      input.weight_kg ?? input.reps ?? input.hold_seconds ?? null;
+    const first = input.weight_kg ?? input.reps ?? input.hold_seconds ?? null;
     if (first !== null) {
       return {
         is_pr: true,
@@ -96,13 +93,11 @@ async function upsertPersonalRecord(
   exercise_name: string,
   pr_type: "weight" | "reps" | "hold_time" | "first_log",
   value: number,
-  session_id: string
+  session_id: string,
+  userId: string
 ) {
   const supabase = getSupabase();
 
-  // 'first_log' is recorded on the set but stored as the appropriate concrete
-  // pr_type so future comparisons can use it. Pick weight if available, else
-  // reps, else hold_time. The caller already chose `value` accordingly.
   const concrete: "weight" | "reps" | "hold_time" =
     pr_type === "first_log" ? "weight" : pr_type;
 
@@ -110,31 +105,33 @@ async function upsertPersonalRecord(
     .from("personal_records")
     .upsert(
       {
+        user_id: userId,
         exercise_name,
         pr_type: concrete,
         value,
         achieved_at: new Date().toISOString(),
         session_id,
       },
-      { onConflict: "exercise_name,pr_type" }
+      { onConflict: "exercise_name,pr_type,user_id" }
     );
 
   if (error) throw error;
 }
 
-export function registerSetTools(server: McpServer) {
+export function registerSetTools(server: McpServer, userId: string) {
   server.tool(
     "log_set",
     "Log a single set within a session. Auto-detects PRs and updates personal_records.",
     logSetInput,
     async (input) => {
       try {
-        const pr = await detectPr(input);
+        const pr = await detectPr(input, userId);
 
         const supabase = getSupabase();
         const { data, error } = await supabase
           .from("exercise_sets")
           .insert({
+            user_id: userId,
             session_id: input.session_id,
             exercise_name: input.exercise_name,
             set_number: input.set_number,
@@ -152,7 +149,6 @@ export function registerSetTools(server: McpServer) {
         if (error) throw error;
 
         if (pr.is_pr && pr.pr_type && pr.new_value !== null) {
-          // For first_log, decide which concrete pr_type to record under.
           let concrete: "weight" | "reps" | "hold_time";
           let value: number;
           if (pr.pr_type === "first_log") {
@@ -175,7 +171,8 @@ export function registerSetTools(server: McpServer) {
             input.exercise_name,
             concrete,
             value,
-            input.session_id
+            input.session_id,
+            userId
           );
         }
 
@@ -203,6 +200,7 @@ export function registerSetTools(server: McpServer) {
           .from("exercise_sets")
           .select("*")
           .eq("session_id", input.session_id)
+          .eq("user_id", userId)
           .order("exercise_name", { ascending: true })
           .order("set_number", { ascending: true });
 

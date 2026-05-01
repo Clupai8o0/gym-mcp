@@ -1,10 +1,11 @@
 {
+  "outputDirectory": "public",
   "functions": {
     "api/mcp.ts": {
       "maxDuration": 30
+    },
+    "api/admin/token.ts": {
+      "maxDuration": 10
     }
-  },
-  "rewrites": [
-    { "source": "/api/mcp", "destination": "/api/mcp" }
-  ]
+  }
 }

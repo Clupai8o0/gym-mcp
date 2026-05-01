@@ -19,13 +19,13 @@ function mondayOf(date: Date): Date {
     date.getUTCMonth(),
     date.getUTCDate()
   ));
-  const day = d.getUTCDay(); // 0 Sun .. 6 Sat
+  const day = d.getUTCDay();
   const diff = (day === 0 ? -6 : 1 - day);
   d.setUTCDate(d.getUTCDate() + diff);
   return d;
 }
 
-export function registerAnalyticsTools(server: McpServer) {
+export function registerAnalyticsTools(server: McpServer, userId: string) {
   server.tool(
     "get_volume_summary",
     "Total sets, reps, and tonnage between two dates, grouped by exercise.",
@@ -38,6 +38,7 @@ export function registerAnalyticsTools(server: McpServer) {
           .select(
             "exercise_name, weight_kg, reps, session:workout_sessions!inner(date)"
           )
+          .eq("user_id", userId)
           .gte("session.date", input.from_date)
           .lte("session.date", input.to_date);
 
@@ -81,7 +82,6 @@ export function registerAnalyticsTools(server: McpServer) {
           }
         }
 
-        // If any set in a bucket was bodyweight, tonnage becomes null.
         const summary = [...buckets.values()].map((b) => ({
           exercise_name: b.exercise_name,
           total_sets: b.total_sets,
@@ -117,6 +117,7 @@ export function registerAnalyticsTools(server: McpServer) {
         const { data, error } = await supabase
           .from("workout_sessions")
           .select("date")
+          .eq("user_id", userId)
           .gte("date", startMonday.toISOString())
           .order("date", { ascending: true });
 

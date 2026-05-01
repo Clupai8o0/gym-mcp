@@ -1,6 +1,9 @@
 import type { IncomingMessage, ServerResponse } from "http";
+import { parse as parseUrl } from "url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { getSupabase } from "../lib/supabase";
+import { GUIDE } from "../lib/guide";
 import { registerSessionTools } from "../lib/tools/sessions";
 import { registerSetTools } from "../lib/tools/sets";
 import { registerPrTools } from "../lib/tools/prs";
@@ -12,30 +15,48 @@ export const config = { runtime: "nodejs" };
 const SERVER_NAME = "workout-tracker";
 const SERVER_VERSION = "1.0.0";
 
-function buildServer(): McpServer {
+function buildServer(userId: string): McpServer {
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
-    { capabilities: { tools: {} } }
+    { capabilities: { tools: {}, resources: {} } }
   );
 
-  registerSessionTools(server);
-  registerSetTools(server);
-  registerPrTools(server);
-  registerSkillTools(server);
-  registerAnalyticsTools(server);
+  server.resource(
+    "guide",
+    "gym://guide",
+    { mimeType: "text/markdown", description: "Full tool reference and workflow guide for this MCP server." },
+    async () => ({
+      contents: [{ uri: "gym://guide", mimeType: "text/markdown", text: GUIDE }],
+    })
+  );
+
+  registerSessionTools(server, userId);
+  registerSetTools(server, userId);
+  registerPrTools(server, userId);
+  registerSkillTools(server, userId);
+  registerAnalyticsTools(server, userId);
 
   return server;
 }
 
-function isAuthorized(req: IncomingMessage): boolean {
-  const expected = process.env.MCP_AUTH_TOKEN;
-  if (!expected) return false;
+function extractToken(req: IncomingMessage): string | null {
+  const { query } = parseUrl(req.url ?? "", true);
+  return typeof query.api_key === "string" && query.api_key ? query.api_key : null;
+}
 
-  const header = req.headers["authorization"];
-  if (!header || Array.isArray(header)) return false;
+async function resolveUser(req: IncomingMessage): Promise<string | null> {
+  const token = extractToken(req);
+  if (!token) return null;
 
-  const [scheme, token] = header.split(" ");
-  return scheme === "Bearer" && token === expected;
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("api_tokens")
+    .select("user_id, is_beta")
+    .eq("token", token)
+    .single();
+
+  if (error || !data || !data.is_beta) return null;
+  return data.user_id as string;
 }
 
 function sendJson(res: ServerResponse, status: number, body: unknown) {
@@ -65,14 +86,9 @@ export default async function handler(
   res: ServerResponse
 ) {
   try {
-    if (!isAuthorized(req)) {
-      return sendJson(res, 401, { error: "Unauthorized" });
-    }
-
     const method = (req.method ?? "GET").toUpperCase();
 
     if (method === "GET") {
-      // Server info handshake for the claude.ai connector.
       return sendJson(res, 200, {
         name: SERVER_NAME,
         version: SERVER_VERSION,
@@ -82,9 +98,13 @@ export default async function handler(
       });
     }
 
+    const userId = await resolveUser(req);
+    if (!userId) {
+      return sendJson(res, 401, { error: "Unauthorized" });
+    }
+
     if (method === "POST") {
-      const server = buildServer();
-      // Stateless mode: no session persistence between requests.
+      const server = buildServer(userId);
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
       });
@@ -102,11 +122,9 @@ export default async function handler(
     }
 
     if (method === "DELETE") {
-      // Stateless server has nothing to tear down per session.
       return sendJson(res, 200, { ok: true });
     }
 
-    res.statusCode = 405;
     res.setHeader("Allow", "GET, POST, DELETE");
     return sendJson(res, 405, { error: "Method Not Allowed" });
   } catch (err) {

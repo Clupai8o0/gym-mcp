@@ -7,7 +7,7 @@ import {
 } from "../schema";
 import { ok, fail } from "./shared";
 
-export function registerSessionTools(server: McpServer) {
+export function registerSessionTools(server: McpServer, userId: string) {
   server.tool(
     "log_session",
     "Create a new workout session.",
@@ -18,6 +18,7 @@ export function registerSessionTools(server: McpServer) {
         const { data, error } = await supabase
           .from("workout_sessions")
           .insert({
+            user_id: userId,
             session_type: input.session_type,
             date: input.date,
             notes: input.notes ?? null,
@@ -52,6 +53,7 @@ export function registerSessionTools(server: McpServer) {
           .from("workout_sessions")
           .select("*")
           .eq("id", input.session_id)
+          .eq("user_id", userId)
           .single();
 
         if (sErr) throw sErr;
@@ -63,6 +65,7 @@ export function registerSessionTools(server: McpServer) {
           .from("exercise_sets")
           .select("*")
           .eq("session_id", input.session_id)
+          .eq("user_id", userId)
           .order("exercise_name", { ascending: true })
           .order("set_number", { ascending: true });
 
@@ -94,6 +97,7 @@ export function registerSessionTools(server: McpServer) {
         let query = supabase
           .from("workout_sessions")
           .select("*", { count: "exact" })
+          .eq("user_id", userId)
           .order("date", { ascending: false })
           .range(offset, offset + limit - 1);
 

@@ -3,7 +3,7 @@ import { getSupabase } from "../supabase";
 import { getPrHistoryInput, getPrsInput, logPrInput } from "../schema";
 import { ok, fail } from "./shared";
 
-export function registerPrTools(server: McpServer) {
+export function registerPrTools(server: McpServer, userId: string) {
   server.tool(
     "get_prs",
     "Return all personal records, optionally filtered by exercise name.",
@@ -14,6 +14,7 @@ export function registerPrTools(server: McpServer) {
         let query = supabase
           .from("personal_records")
           .select("*")
+          .eq("user_id", userId)
           .order("exercise_name", { ascending: true });
 
         if (input.exercise_name) {
@@ -43,6 +44,7 @@ export function registerPrTools(server: McpServer) {
           .select(
             "id, exercise_name, set_number, weight_kg, reps, hold_seconds, pr_type, notes, created_at, session:workout_sessions(id, date, session_type)"
           )
+          .eq("user_id", userId)
           .eq("exercise_name", input.exercise_name)
           .eq("is_pr", true)
           .eq("pr_type", input.pr_type)
@@ -69,6 +71,7 @@ export function registerPrTools(server: McpServer) {
           .from("personal_records")
           .upsert(
             {
+              user_id: userId,
               exercise_name: input.exercise_name,
               pr_type: input.pr_type,
               value: input.value,
@@ -76,7 +79,7 @@ export function registerPrTools(server: McpServer) {
               session_id: input.session_id ?? null,
               notes: input.notes ?? null,
             },
-            { onConflict: "exercise_name,pr_type" }
+            { onConflict: "exercise_name,pr_type,user_id" }
           )
           .select("*")
           .single();

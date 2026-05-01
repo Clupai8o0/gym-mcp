@@ -35,7 +35,7 @@ export const SKILL_STAGE_COUNTS: Record<string, number> = {
   hefesto: 6,
 };
 
-export function registerSkillTools(server: McpServer) {
+export function registerSkillTools(server: McpServer, userId: string) {
   server.tool(
     "update_skill_progress",
     "Upsert progress for a skill (current stage, stage name, percent).",
@@ -47,6 +47,7 @@ export function registerSkillTools(server: McpServer) {
           .from("skill_progressions")
           .upsert(
             {
+              user_id: userId,
               skill_name: input.skill_name,
               current_stage: input.current_stage,
               stage_name: input.stage_name,
@@ -54,7 +55,7 @@ export function registerSkillTools(server: McpServer) {
               notes: input.notes ?? null,
               last_updated: new Date().toISOString(),
             },
-            { onConflict: "skill_name" }
+            { onConflict: "skill_name,user_id" }
           )
           .select("*")
           .single();
@@ -78,6 +79,7 @@ export function registerSkillTools(server: McpServer) {
         const { data, error } = await supabase
           .from("skill_progressions")
           .select("*")
+          .eq("user_id", userId)
           .order("skill_name", { ascending: true });
 
         if (error) throw error;
@@ -120,6 +122,7 @@ export function registerSkillTools(server: McpServer) {
           .from("skill_progressions")
           .select("*")
           .eq("skill_name", input.skill_name)
+          .eq("user_id", userId)
           .maybeSingle();
 
         if (error) throw error;
