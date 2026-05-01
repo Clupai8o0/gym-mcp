@@ -117,7 +117,7 @@ curl https://<your-project>.vercel.app/api/mcp
 
 | Variable | Where to get it | Required |
 |---|---|---|
-| `SUPABASE_URL` | Supabase → Settings → API → Project URL | Yes |
+| `SUPABASE_URL` | Supabase → Settings → API → Project URL (e.g. `https://xxx.supabase.co` — no trailing path) | Yes |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Settings → API → service_role key | Yes |
 | `ADMIN_SECRET` | Any random string — `openssl rand -hex 32` | Yes |
 
