@@ -53,3 +53,8 @@ alter table public.skill_progressions
 alter table public.skill_progressions
   add constraint skill_progressions_skill_name_user_unique
   unique (skill_name, user_id);
+
+-- =========================================================================
+-- Grant PostgREST access to the new table
+-- =========================================================================
+grant all on public.api_tokens to postgres, anon, authenticated, service_role;
