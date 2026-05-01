@@ -132,7 +132,7 @@ export default async function handler(
     if (!res.headersSent) {
       return sendJson(res, 500, {
         error: "Internal Server Error",
-        message: err instanceof Error ? err.message : String(err),
+        message: err instanceof Error ? err.message : JSON.stringify(err),
       });
     }
     res.end();
