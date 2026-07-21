@@ -8,6 +8,9 @@
     "lint": "uv run ruff check . && uv run black --check .",
     "typecheck": "uv run mypy",
     "test": "uv run pytest -q",
-    "dev": "uv run uvicorn app.main:app --reload --port 8000"
+    "dev": "uv run uvicorn app.main:app --reload --port 8000",
+    "migrate": "uv run alembic upgrade head",
+    "migrate:down": "uv run alembic downgrade -1",
+    "migrate:make": "uv run alembic revision --autogenerate -m"
   }
 }

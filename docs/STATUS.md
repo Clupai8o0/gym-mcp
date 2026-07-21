@@ -13,6 +13,9 @@ each phase with what shipped, DoD evidence, and any decisions.
 Not required for Phase 0. Track here so they don't become surprise blockers:
 
 - [ ] Neon project (primary + preview branch); pooled + unpooled URLs — **Phase 1**
+      ⤷ schema + migrations are built and verified (against local Postgres 16); **provisioning the
+      Neon project and setting `DATABASE_URL`/`DATABASE_URL_UNPOOLED` is the one remaining step** —
+      then `pnpm --filter @tempo/api migrate` applies `head` to the Neon branch.
 - [ ] Google OAuth client (OIDC) + authorized redirect URI — **Phase 3**
 - [ ] Vercel Blob store (`BLOB_READ_WRITE_TOKEN`) — **Phase 4**
 - [ ] OpenAI API key + GPT Image 2 access — **Phase 4**
@@ -43,7 +46,47 @@ Not required for Phase 0. Track here so they don't become surprise blockers:
     `legacy/ARCHIVE_NOTE.md`. Reversible.
   - `packages/ui` deferred until it's first needed (Phase 6).
 
-## Phase 1 — Neon + data model — NOT STARTED
+## Phase 1 — Neon + data model — DONE (verified on local Postgres; Neon provisioning pending)
+- **Branch/PR:** `phase-1-data-model` (cut from `phase-0-foundation` HEAD, since Phase 0 is not
+  yet merged to `main`; committed locally, push + PR pending human go-ahead).
+- **Scope:**
+  - **SQLAlchemy 2.0 models** (`app/models/`) for all 7 core + skills tables — `users`,
+    `exercises`, `workout_sessions`, `exercise_sets`, `personal_records`, `skills`,
+    `skill_progress` — mirroring `docs/02-data-model.md`. OAuth tables deferred to Phase 3.
+  - **Alembic** (async `env.py`, uses the **unpooled** URL): `0001_init` creates the
+    `pgcrypto` + `pg_trgm` extensions and every table with its indexes — incl. the partial-unique
+    slug indexes, the `primary_muscles` GIN index, and the `name gin_trgm_ops` trigram index —
+    and all CHECK constraints. `0002_seed_skills` seeds the 13 skills.
+  - **`core/config.py`** (pydantic-settings: pooled + unpooled URLs) and **`core/db.py`**
+    (async engine/sessionmaker + `make_asyncpg_url` — Neon-safe: forces `+asyncpg`, lifts
+    `sslmode`→`ssl`, drops libpq-only params).
+  - **Test harness** (`tests/conftest.py`, `tests/_dbadmin.py`): a session-scoped migrated
+    schema + a per-test transaction-rollback `AsyncSession`.
+  - CI Postgres 16 service; `.env.example` `TEST_DATABASE_URL`; `migrate` / `migrate:down` /
+    `migrate:make` scripts on `@tempo/api`.
+- **DoD evidence:**
+  - **`alembic upgrade head`** on an empty DB → all 7 core+skills tables (+ `alembic_version`),
+    `pgcrypto` + `pg_trgm`, 13 skills seeded. Spot-checked DDL: `exercises_name_trgm` =
+    `USING gin (name gin_trgm_ops)`; `exercises_global_slug_uidx` = unique btree `WHERE
+    (created_by_user_id IS NULL)`.
+  - **`alembic downgrade base`** → every table + both extensions removed (only `alembic_version`
+    remains); **re-`upgrade head` is repeatable** (re-seeds 13).
+  - **`uv run pytest -q` → 20 passed:** model round-trips for every table (server defaults, arrays,
+    Decimal, timestamps); partial-index behavior (two globals same slug conflict; global+custom
+    same slug allowed); `unit_pref` CHECK; migration up/down/up reversibility; skills-seeded;
+    `make_asyncpg_url` URL parsing.
+  - **`pnpm exec turbo run build lint typecheck test` → 7/7 successful.** API `ruff` + `black
+    --check` + `mypy` (strict, 21 files) clean.
+  - **`.env`-based `alembic upgrade head`** (the `pnpm migrate` path) verified via the settings
+    fallback in `env.py`.
+- **Notes / decisions:**
+  - **Skills seeded via an Alembic data migration (`0002`)** rather than a `scripts/` seed —
+    they're fixed reference data, so `alembic upgrade head` yields a fully-seeded DB on any fresh
+    branch with no extra step. (The ~800-row **catalog** seed remains a Phase 4 script, per the docs.)
+  - Verified against **local Postgres 16** (an empty DB ≡ an empty Neon branch, per `12`'s test
+    rule). **Provisioning the actual Neon project + wiring pooled/unpooled URLs is the sole
+    remaining external prerequisite** — flagged above; the migration is Neon-ready (SSL handling +
+    unpooled-for-DDL).
 ## Phase 2 — Backend skeleton + core services + REST — NOT STARTED
 ## Phase 3 — Identity + OAuth 2.1 AS 🔒 — NOT STARTED
 ## Phase 4 — Catalog import + illustration pipeline — NOT STARTED
