@@ -1,20 +1,27 @@
 {
-  "name": "workout-tracker-mcp",
-  "version": "1.0.0",
-  "description": "MCP server exposing a Supabase-backed workout tracker over Streamable HTTP for claude.ai",
+  "name": "tempo",
+  "version": "0.0.0",
   "private": true,
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "latest",
-    "@supabase/supabase-js": "latest",
-    "zod": "latest"
-  },
-  "devDependencies": {
-    "typescript": "latest",
-    "@types/node": "latest",
-    "vercel": "latest"
+  "description": "Tempo — personal-first, share-ready workout app (web + one Python brain exposed as REST and MCP). See docs/.",
+  "packageManager": "pnpm@11.13.1",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
   },
   "scripts": {
-    "build": "tsc --noEmit",
-    "dev": "vercel dev"
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "check": "turbo run build lint typecheck test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "commitlint": "commitlint"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "21.2.1",
+    "@commitlint/config-conventional": "21.2.0",
+    "prettier": "3.9.6",
+    "turbo": "2.10.5"
   }
 }

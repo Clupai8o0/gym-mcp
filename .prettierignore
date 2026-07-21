@@ -1,0 +1,27 @@
+# Build output & dependencies
+node_modules/
+.next/
+out/
+.turbo/
+dist/
+build/
+coverage/
+
+# Lockfiles
+pnpm-lock.yaml
+uv.lock
+
+# Python (formatted by black/ruff, not prettier)
+**/*.py
+apps/api/.venv/
+.venv/
+
+# Archived legacy app (read-only; see legacy/ARCHIVE_NOTE.md)
+legacy/
+
+# Authored docs / instructions (managed by hand)
+docs/
+CLAUDE.md
+
+# Generated
+next-env.d.ts

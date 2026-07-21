@@ -1,0 +1,15 @@
+# pnpm workspace definition for the Tempo monorepo.
+# Node/TS packages only. Python packages (apps/api, scripts/) are managed by uv,
+# not pnpm, and are intentionally excluded here. The archived TS app in legacy/ is
+# also excluded (read-only; see legacy/ARCHIVE_NOTE.md).
+packages:
+  - "apps/*"
+  - "packages/*"
+# Native build scripts approved to run on install:
+#   sharp         — Next.js image optimization
+#   unrs-resolver — native module resolver used by eslint-config-next
+allowBuilds:
+  sharp: true
+  unrs-resolver: true
+minimumReleaseAgeExclude:
+  - prettier@3.9.6

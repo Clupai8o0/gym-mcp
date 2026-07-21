@@ -1,0 +1,48 @@
+[project]
+name = "tempo-api"
+version = "0.1.0"
+description = "Tempo API — one FastAPI service exposing REST, the MCP server, and the OAuth 2.1 AS over a shared services/ layer. See docs/03-backend-fastapi.md."
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+    "ruff>=0.7",
+    "black>=24.10",
+    "mypy>=1.13",
+]
+
+# No [build-system]: this is a uv "virtual" project. Dependencies are installed
+# into .venv, but the `app` package is imported via sys.path (see pytest pythonpath),
+# not installed. Keeps the Vercel Python entrypoint (index.py) simple.
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+src = ["app", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]
+# Line length is enforced by black; let it own wrapping.
+ignore = ["E501"]
+
+[tool.black]
+line-length = 100
+target-version = ["py313"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_unused_ignores = true
+files = ["app", "tests"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["."]
+testpaths = ["tests"]

@@ -1,0 +1,13 @@
+{
+  "name": "@tempo/api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Turborepo adapter for the Python FastAPI service. Scripts shell out to uv; real deps live in pyproject.toml.",
+  "scripts": {
+    "build": "echo \"[api] no build step (Python served by uv/Vercel Fluid Compute)\"",
+    "lint": "uv run ruff check . && uv run black --check .",
+    "typecheck": "uv run mypy",
+    "test": "uv run pytest -q",
+    "dev": "uv run uvicorn app.main:app --reload --port 8000"
+  }
+}

@@ -1,7 +1,39 @@
-node_modules
-dist
-.vercel
+# Dependencies
+node_modules/
+.pnp
+.pnp.*
+
+# Node / Next.js build output
+.next/
+out/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+
+# Turborepo
+.turbo/
+
+# Python / uv
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Environment (never commit real secrets; keep .env.example current)
 .env
 .env.local
-*.log
+.env.*.local
+
+# Vercel
+.vercel/
+
+# OS / editor
 .DS_Store
+*.log
+.idea/
+.vscode/
