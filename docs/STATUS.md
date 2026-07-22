@@ -87,7 +87,55 @@ Not required for Phase 0. Track here so they don't become surprise blockers:
     rule). **Provisioning the actual Neon project + wiring pooled/unpooled URLs is the sole
     remaining external prerequisite** — flagged above; the migration is Neon-ready (SSL handling +
     unpooled-for-DDL).
-## Phase 2 — Backend skeleton + core services + REST — NOT STARTED
+## Phase 2 — Backend skeleton + core services + REST — DONE (verified on local Postgres)
+- **Branch/PR:** `phase-2-services-rest` (cut from `phase-1-data-model` HEAD, since Phase 1 is
+  not yet merged to `main`; committed locally, push + PR pending human go-ahead).
+- **Scope:**
+  - **`services/`** (framework-free, typed, `db`+`user_id` in, `ServiceError` out) for
+    `users` (dev stub + `/me`), `exercises` (list/filter/get/create-custom), `sessions`
+    (CRUD + detail-with-sets), `sets` (**PR detection**), `prs` (list/history), `skills`
+    (overview/detail/upsert), `analytics` (volume/frequency), and `health` (DB ping).
+  - **PR detection** is a single **chronological recompute** over a user's sets for an
+    exercise, shared by log/update/delete so they can never drift; it reproduces the legacy
+    detection priority (hold → weight → reps → first_log) keyed on `exercise_id`.
+  - **REST routers** mirroring the `03` surface table 1:1 (15 paths incl. `/api/health`,
+    `/api/me`), thin adapters only. **DI** (`api/deps.py`): `get_db` (commit/rollback/close),
+    `pagination` (limit≤100), and a **stubbed `current_user`** that auto-provisions a fixed
+    dev user so writes work before real auth (Phase 3 swaps in session/bearer resolution).
+  - **`core/errors.py`** (`ServiceError` → `{not_found:404, forbidden:403, conflict:409,
+    validation:422}`, canonical `{"error":{kind,message,details?}}` envelope, generic-500
+    guard), **`core/logging.py`** (JSON logs + request-id contextvar + `X-Request-ID`
+    middleware), **`core/slugs.py`**. Pydantic v2 schemas for all I/O; same-site CORS.
+  - `core/config.py` extended (defaulted `web_origin`/`cors_extra_origins`/`log_level`; DB
+    URLs stay the only required vars so the auth-stubbed app boots without the Phase 3+ env).
+- **DoD evidence:**
+  - **`pnpm exec turbo run build lint typecheck test` → 7/7 successful** (web
+    build+lint+typecheck cached; api build+lint+typecheck+**test**). API `ruff` + `black
+    --check` + `mypy` (strict, 69 files) clean.
+  - **`uv run pytest -q` → 70 passed.** Highlights: **8 PR-detection unit tests** (first_log,
+    weight→reps progression, hold_time, the weight-needs-reps legacy quirk, update/delete
+    recompute, measurement + ownership guards); **router tests** for exercises/sessions/sets/
+    prs/analytics/skills/me driving the real HTTP surface through the stub user (full
+    log-a-workout loop, PR celebration payload, pagination, 404/409/422 envelopes,
+    `X-Request-ID`); service tests for visibility scoping, analytics math, skills upsert; and
+    an **architecture guard** (`test_architecture.py`) grepping routers for any DB/query
+    access — enforcing "no logic outside `services/`".
+  - **`GET /api/health`** performs a real `SELECT 1` (via `services/health.ping`) and returns
+    `{"status":"ok","db":"ok"}`; **`app.openapi()`** generates cleanly (15 paths).
+- **Notes / decisions:**
+  - **PR contract ported faithfully from legacy** (kept, not re-litigated): weight PRs require
+    *both* weight and reps recorded, so a heavier weight-only set is not a weight PR — flagged
+    here as a candidate for a future product review, not changed now. `personal_records
+    .achieved_at` now uses the **session's `performed_at`** (when it happened) rather than the
+    legacy insert-time `now()`.
+  - **`current_user` auto-provisions the dev user** (`dev@tempo.local`) idempotently — this
+    is a Phase-2-only shortcut so features work before Phase 3 auth; the `CurrentUser`
+    interface is stable so routers won't change when real auth lands.
+  - **turbo strict-env fix:** added `passThroughEnv: ["TEST_DATABASE_URL"]` to the `test` task
+    so the (throwaway) test-DB URL reaches pytest through `turbo run` on dev machines; CI is
+    unaffected (its `postgres/postgres` default already matched the harness fallback).
+  - New env: `CORS_EXTRA_ORIGINS`, `LOG_LEVEL` (both optional) added to `.env.example`. No
+    Decision-Log change — Phase 2 implements D2/D3/D11, it doesn't alter them.
 ## Phase 3 — Identity + OAuth 2.1 AS 🔒 — NOT STARTED
 ## Phase 4 — Catalog import + illustration pipeline — NOT STARTED
 ## Phase 5 — MCP server (Python) + connector verification — NOT STARTED

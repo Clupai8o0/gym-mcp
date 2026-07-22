@@ -9,19 +9,29 @@ test, keeping tests isolated without re-running migrations.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Iterator
+import os
 
-import pytest
-import pytest_asyncio
-from app.core.db import make_asyncpg_url
-from sqlalchemy.ext.asyncio import (
+# The app's Settings require the Neon URLs at construction (fail-fast). Router tests
+# build the app via ``create_app()`` but never touch the real engine — ``get_db`` is
+# overridden with the rolled-back test session below — so dummy values are enough to let
+# settings load. ``setdefault`` means a real environment (CI/local) still wins.
+os.environ.setdefault("DATABASE_URL", "postgresql://localhost:5432/tempo_unused")
+os.environ.setdefault("DATABASE_URL_UNPOOLED", "postgresql://localhost:5432/tempo_unused")
+
+from collections.abc import AsyncIterator, Iterator  # noqa: E402
+
+import pytest  # noqa: E402
+import pytest_asyncio  # noqa: E402
+from app.core.db import make_asyncpg_url  # noqa: E402
+from httpx import ASGITransport, AsyncClient  # noqa: E402
+from sqlalchemy.ext.asyncio import (  # noqa: E402
     AsyncConnection,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
 
-from tests import _dbadmin
+from tests import _dbadmin  # noqa: E402
 
 _TEST_DB = "tempo_test"
 
@@ -57,3 +67,25 @@ async def db_session(_migrated_db: str) -> AsyncIterator[AsyncSession]:
             await transaction.rollback()
         await connection.close()
         await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def app_client(db_session: AsyncSession) -> AsyncIterator[AsyncClient]:
+    """An ``httpx`` client bound to a fresh app whose ``get_db`` is the test session.
+
+    ``current_user`` is left as the real Phase 2 stub, so requests run through
+    ``ensure_dev_user`` against the same rolled-back transaction — exercising the actual
+    auth-stub path. Writes are visible within the test and discarded at teardown.
+    """
+    from app.api import deps
+    from app.main import create_app
+
+    async def _override_get_db() -> AsyncIterator[AsyncSession]:
+        yield db_session  # no commit: the fixture owns the transaction lifecycle
+
+    application = create_app()
+    application.dependency_overrides[deps.get_db] = _override_get_db
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        yield client
+    application.dependency_overrides.clear()

@@ -1,13 +1,11 @@
-"""Smoke test for the liveness probe (Phase 0 acceptance)."""
+"""Health probe now pings the DB (docs/03 backend-skeleton DoD)."""
 
 from __future__ import annotations
 
-from app.main import app
-from fastapi.testclient import TestClient
+from httpx import AsyncClient
 
 
-def test_health_ok() -> None:
-    client = TestClient(app)
-    response = client.get("/api/health")
+async def test_health_ok(app_client: AsyncClient) -> None:
+    response = await app_client.get("/api/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.json() == {"status": "ok", "db": "ok"}
