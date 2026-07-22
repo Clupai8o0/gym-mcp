@@ -57,9 +57,8 @@ export function RestTimer({ active, startKey, onDismiss, seconds = 90 }: RestTim
           role="timer"
           aria-label={done ? "Rest complete" : `Rest ${formatClock(remaining)} remaining`}
           initial={slide}
-          animate={{ opacity: 1, y: 0 }}
-          exit={slide}
-          transition={{ duration: durations.base, ease: easings.out }}
+          animate={{ opacity: 1, y: 0, transition: { duration: durations.base, ease: easings.out } }}
+          exit={{ ...slide, transition: { duration: durations.fast, ease: easings.in } }}
         >
           <span className={styles.track} aria-hidden>
             <span className={styles.fill} style={{ transform: `scaleX(${progress})` }} />

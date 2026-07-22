@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { AccountCard, ConnectionsList, ConnectorCard, UnitToggle } from "@/components/settings";
+import { InstallCard } from "@/components/pwa/InstallCard";
 import { listConnections } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
 import type { UnitPref } from "@/lib/types";
@@ -21,6 +22,8 @@ export default async function SettingsPage() {
         <p className="eyebrow">Account</p>
         <h1 className={styles.title}>Settings</h1>
       </header>
+
+      <InstallCard />
 
       <section className={styles.section} aria-labelledby="prefs-heading">
         <div className={styles.sectionHead}>

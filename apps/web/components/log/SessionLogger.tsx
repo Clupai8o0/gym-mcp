@@ -26,6 +26,9 @@ export interface SessionLoggerProps {
   unitPref: UnitPref;
 }
 
+/** How long the PR bloom plays before it's cleared — comfortably longer than the ~420ms animation. */
+const CELEBRATE_MS = 900;
+
 /** Seed the client view model from the server's session detail (all sets already persisted). */
 function seedGroups(session: SessionDetail): LogGroup[] {
   return session.exercises.map((group) => ({
@@ -102,7 +105,7 @@ export function SessionLogger({ session, unitPref }: SessionLoggerProps) {
   const celebrate = useCallback((clientId: string) => {
     setCelebrateId(clientId);
     if (celebrateTimer.current) clearTimeout(celebrateTimer.current);
-    celebrateTimer.current = setTimeout(() => setCelebrateId(null), 900);
+    celebrateTimer.current = setTimeout(() => setCelebrateId(null), CELEBRATE_MS);
   }, []);
 
   useEffect(() => () => {

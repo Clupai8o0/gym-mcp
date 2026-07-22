@@ -10,7 +10,7 @@
   padding: var(--space-2) var(--space-8) var(--space-2) var(--space-4);
   background-color: var(--surface-2);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: 1px solid var(--input-border);
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
   cursor: pointer;
@@ -20,7 +20,7 @@
 }
 
 .select:hover {
-  border-color: var(--border-strong);
+  border-color: var(--text-muted);
 }
 
 .select:focus-visible {

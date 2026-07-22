@@ -1,0 +1,17 @@
+.pressable {
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
+/* :active propagates to this wrapper from the pressed content inside it (the card/tile). */
+.pressable:active {
+  transform: scale(var(--press-scale));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pressable {
+    transition: none;
+  }
+  .pressable:active {
+    transform: none;
+  }
+}

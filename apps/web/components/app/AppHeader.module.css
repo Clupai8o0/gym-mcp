@@ -5,6 +5,8 @@
   background-color: color-mix(in srgb, var(--bg) 82%, transparent);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
+  /* In an installed iOS standalone app (viewport-fit: cover), keep the bar clear of the notch. */
+  padding-top: env(safe-area-inset-top, 0px);
 }
 
 .inner {
@@ -25,13 +27,6 @@
   font-weight: var(--weight-medium);
   letter-spacing: var(--tracking-tight);
   color: var(--text);
-}
-
-.mark {
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: var(--radius-full);
-  background-color: var(--accent);
 }
 
 /* Push the user menu to the right, nav stays left-of-it. */

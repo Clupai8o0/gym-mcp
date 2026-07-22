@@ -3,7 +3,7 @@
 import { motion, useReducedMotion } from "motion/react";
 
 import { Spinner } from "@/components/ui";
-import { enterTransition } from "@/design/motion";
+import { durations, easings, enterTransition } from "@/design/motion";
 import { formatSetSummary } from "@/lib/format";
 import type { UnitPref } from "@/lib/types";
 import { PrCelebration } from "./PrCelebration";
@@ -45,6 +45,11 @@ export function SetRow({ set, unitPref, celebrate, onDelete, onRetry }: SetRowPr
       data-status={set.status}
       initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
+      exit={
+        reduce
+          ? { opacity: 0 }
+          : { opacity: 0, y: -8, transition: { duration: durations.fast, ease: easings.in } }
+      }
       transition={enterTransition}
     >
       <span className={styles.number} aria-hidden>

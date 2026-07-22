@@ -19,7 +19,9 @@
 
   --text: #ffffff; /* ink */
   --text-secondary: #dadbdf; /* body */
-  --text-muted: #7d8187; /* captions, meta */
+  /* Meta/captions. Nudged up from the x.ai spec's #7d8187 to clear WCAG AA (4.5:1) on the
+   * elevated --surface/--surface-2 fills, not just the page canvas (docs/08 a11y gate). */
+  --text-muted: #868a90;
 
   --accent: #ff7a17; /* sunset — the single restrained accent */
   --accent-hover: #ff8f3d;
@@ -35,6 +37,10 @@
   --outline: rgba(255, 255, 255, 0.14);
   --outline-hover: rgba(255, 255, 255, 0.24);
   --focus-ring: rgba(255, 122, 23, 0.55);
+
+  /* Resting border for functional form controls (input/select/number pad). Stronger than the
+   * decorative --border hairline so the field boundary clears WCAG 1.4.11 (3:1) on --surface-2. */
+  --input-border: #676b71;
 
   /* Overlay + the one legitimate elevation (dialogs/sheets over content). */
   --overlay: rgba(0, 0, 0, 0.62);
@@ -97,6 +103,14 @@
   --dur-fast: 120ms;
   --dur-base: 200ms;
   --dur-slow: 320ms;
+  /* The PR count-up — crisp, still inside the <500ms signature budget. */
+  --dur-count: 300ms;
+  /* Ambient loops (skeleton pulse, generating shimmer, sync dot) — slow, non-vestibular. */
+  --dur-loop: 1400ms;
+
+  /* Press-feedback scales (docs/08 §3): standard, and a stronger tier for small keypad targets. */
+  --press-scale: 0.97;
+  --press-scale-strong: 0.94;
 
   /* ── Layout ───────────────────────────────────────────────────────────────── */
   --container: 1200px;
@@ -116,7 +130,7 @@
 
     --text: #0a0a0a;
     --text-secondary: #3f3f46;
-    --text-muted: #71717a;
+    --text-muted: #6b6b73; /* clears AA on the light --surface/--surface-2 fills */
 
     --accent: #d95c0a;
     --accent-hover: #c2510a;
@@ -131,6 +145,8 @@
     --outline: rgba(10, 10, 10, 0.14);
     --outline-hover: rgba(10, 10, 10, 0.28);
     --focus-ring: rgba(217, 92, 10, 0.5);
+
+    --input-border: #8b8d93; /* ≥3:1 on the light --surface-2 fill */
 
     --overlay: rgba(10, 10, 10, 0.4);
     --shadow-overlay: 0 16px 48px rgba(10, 10, 10, 0.16);

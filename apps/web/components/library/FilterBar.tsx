@@ -1,12 +1,18 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { Button, Input, Select } from "@/components/ui";
-import { Sheet } from "@/components/motion/Sheet";
 import { CATEGORIES, EQUIPMENT, LEVELS, MUSCLES } from "@/lib/catalog";
 import styles from "./FilterBar.module.css";
+
+// The filter Sheet (and the `motion` library it pulls in) only ever renders after a tap on mobile,
+// so defer its chunk — this keeps `motion` out of the Library route's initial bundle (docs/07 CWV).
+const Sheet = dynamic(() => import("@/components/motion/Sheet").then((m) => m.Sheet), {
+  ssr: false,
+});
 
 const SEARCH_DEBOUNCE_MS = 250;
 
@@ -123,6 +129,7 @@ export function FilterBar() {
           className={styles.mobileFilters}
           onClick={() => setSheetOpen(true)}
           aria-haspopup="dialog"
+          aria-expanded={sheetOpen}
         >
           Filters{activeCount > 0 ? ` (${activeCount})` : ""}
         </Button>

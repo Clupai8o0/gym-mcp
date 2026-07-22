@@ -62,11 +62,13 @@ export function useOfflineQueue({ onSynced, onSyncFailed }: UseOfflineQueueArgs)
         const result = await logSet(item.sessionId, item.payload);
         await removeQueuedSet(item.clientId);
         onSynced(item.clientId, result);
+        await refreshPending(); // tick the "Syncing N sets…" count down as each write lands
       } catch (error) {
         if (error instanceof NetworkError) break; // still offline — retry on the next reconnect
         if (error instanceof ClientApiError) {
           await removeQueuedSet(item.clientId); // permanent failure — don't retry forever
           onSyncFailed(item.clientId, error);
+          await refreshPending();
           continue;
         }
         throw error;

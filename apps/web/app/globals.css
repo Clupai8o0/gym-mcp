@@ -96,11 +96,11 @@ svg {
   border: 0;
 }
 
-/* One consistent, always-visible focus ring on keyboard focus (docs/08 a11y). */
+/* One consistent, always-visible focus ring on keyboard focus (docs/08 a11y). The outline follows
+ * each element's own border-radius — we don't rewrite the radius (which would reshape pill controls). */
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: var(--radius-sm);
 }
 :focus:not(:focus-visible) {
   outline: none;

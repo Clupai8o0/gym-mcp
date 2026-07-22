@@ -5,19 +5,23 @@
   border-radius: var(--radius-sm);
 }
 
+/* A solid "breathing" overlay — no gradient (craft rubric), opacity-only so it's GPU-cheap. */
 .skeleton::after {
   content: "";
   position: absolute;
   inset: 0;
-  transform: translateX(-100%);
-  background: linear-gradient(90deg, transparent, var(--surface-3), transparent);
-  opacity: 0.6;
-  animation: shimmer 1.4s var(--ease-in-out) infinite;
+  background-color: var(--surface-3);
+  opacity: 0;
+  animation: skeleton-pulse var(--dur-loop) var(--ease-in-out) infinite;
 }
 
-@keyframes shimmer {
+@keyframes skeleton-pulse {
+  0%,
   100% {
-    transform: translateX(100%);
+    opacity: 0;
+  }
+  50% {
+    opacity: 0.55;
   }
 }
 

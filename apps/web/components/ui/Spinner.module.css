@@ -15,8 +15,12 @@
   }
 }
 
+/* A loading spinner conveys essential "working" status, so we keep it turning — but gently — under
+ * reduced motion, overriding the global nuclear reset (which would otherwise freeze it and read as
+ * "stuck"). A slow, localized rotation is non-vestibular. */
 @media (prefers-reduced-motion: reduce) {
   .spinner {
-    animation-duration: 1.2s;
+    animation-duration: var(--dur-loop) !important;
+    animation-iteration-count: infinite !important;
   }
 }

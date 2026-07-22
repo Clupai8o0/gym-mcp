@@ -17,27 +17,62 @@ export interface SheetProps {
   label: string;
 }
 
+const FOCUSABLE =
+  'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
+
 /**
  * An interruptible slide-in panel (docs/08 primitive `Sheet`). Overlay fade + panel slide via
- * `motion` + `AnimatePresence`; ESC and overlay-click close it; body scroll is locked while open;
- * focus moves into the panel and restores on close. Reduced motion → instant, no slide.
+ * `motion` + `AnimatePresence`; the panel slides in with ease-out and *out* with ease-in (docs/08
+ * §3). A proper modal dialog: ESC + overlay-click close it, body scroll locks, focus moves in and
+ * is **trapped** (Tab cycles within the panel), the background is `inert`, and focus restores on
+ * close. Reduced motion → instant cross-fade, no slide.
  */
 export function Sheet({ open, onClose, children, side = "bottom", label }: SheetProps) {
   const reduce = useReducedMotion();
+  const rootRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
     const previous = document.activeElement as HTMLElement | null;
+
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab" || !panelRef.current) return;
+      // Trap Tab within the panel so focus can't wander onto the obscured page behind the overlay.
+      const items = panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE);
+      if (items.length === 0) {
+        event.preventDefault();
+        panelRef.current.focus();
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || active === panelRef.current)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
+
     document.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
     panelRef.current?.focus();
+
+    // Hide the rest of the document from AT + pointer while the dialog is open.
+    const backdropped = Array.from(document.body.children).filter((el) => el !== rootRef.current);
+    backdropped.forEach((el) => el.setAttribute("inert", ""));
+
     return () => {
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = "";
+      backdropped.forEach((el) => el.removeAttribute("inert"));
       previous?.focus?.();
     };
   }, [open, onClose]);
@@ -46,14 +81,17 @@ export function Sheet({ open, onClose, children, side = "bottom", label }: Sheet
   if (typeof document === "undefined") return null;
 
   const offset = side === "bottom" ? { y: "100%" } : { x: "100%" };
-  const slide = reduce
+  const enter = reduce
     ? { duration: durations.fast, ease: easings.out }
     : { duration: durations.slow, ease: easings.out };
+  const exit = reduce
+    ? { duration: durations.fast, ease: easings.out }
+    : { duration: durations.base, ease: easings.in };
 
   return createPortal(
     <AnimatePresence>
       {open && (
-        <div className={styles.root}>
+        <div className={styles.root} ref={rootRef}>
           <motion.div
             className={styles.overlay}
             onClick={onClose}
@@ -70,9 +108,8 @@ export function Sheet({ open, onClose, children, side = "bottom", label }: Sheet
             tabIndex={-1}
             className={side === "bottom" ? styles.panelBottom : styles.panelRight}
             initial={reduce ? { opacity: 0 } : offset}
-            animate={reduce ? { opacity: 1 } : { x: 0, y: 0 }}
-            exit={reduce ? { opacity: 0 } : offset}
-            transition={slide}
+            animate={reduce ? { opacity: 1, transition: enter } : { x: 0, y: 0, transition: enter }}
+            exit={reduce ? { opacity: 0, transition: exit } : { ...offset, transition: exit }}
           >
             {children}
           </motion.div>

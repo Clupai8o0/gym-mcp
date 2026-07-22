@@ -19,7 +19,7 @@
   height: 0.5rem;
   border-radius: var(--radius-full);
   background: currentColor;
-  animation: sync-pulse 1.4s var(--ease-in-out) infinite;
+  animation: sync-pulse var(--dur-loop) var(--ease-in-out) infinite;
 }
 
 .offline .dot {

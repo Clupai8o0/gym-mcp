@@ -1,4 +1,5 @@
 import { Card } from "@/components/ui";
+import { FadeIn } from "@/components/motion/FadeIn";
 import { cn } from "@/lib/cn";
 import { formatCount, formatWeekLabel } from "@/lib/format";
 import type { Frequency } from "@/lib/types";
@@ -23,50 +24,52 @@ export function FrequencyHeatmap({ frequency }: { frequency: Frequency }) {
   const last = items[items.length - 1];
 
   return (
-    <Card className={styles.card}>
-      <dl className={styles.totals}>
-        <div className={styles.total}>
-          <dt className={styles.totalLabel}>Sessions</dt>
-          <dd className={`${styles.totalValue} tnum`}>{formatCount(totalSessions)}</dd>
-        </div>
-        <div className={styles.total}>
-          <dt className={styles.totalLabel}>Active weeks</dt>
-          <dd className={`${styles.totalValue} tnum`}>
-            {activeWeeks}
-            <span className={styles.totalMuted}>/{frequency.weeks}</span>
-          </dd>
-        </div>
-      </dl>
+    <FadeIn>
+      <Card className={styles.card}>
+        <dl className={styles.totals}>
+          <div className={styles.total}>
+            <dt className={styles.totalLabel}>Sessions</dt>
+            <dd className={`${styles.totalValue} tnum`}>{formatCount(totalSessions)}</dd>
+          </div>
+          <div className={styles.total}>
+            <dt className={styles.totalLabel}>Active weeks</dt>
+            <dd className={`${styles.totalValue} tnum`}>
+              {activeWeeks}
+              <span className={styles.totalMuted}>/{frequency.weeks}</span>
+            </dd>
+          </div>
+        </dl>
 
-      <div
-        className={styles.strip}
-        role="img"
-        aria-label={`Training frequency: ${totalSessions} sessions across ${frequency.weeks} weeks`}
-      >
-        {items.map((item) => (
-          <span
-            key={item.week_start}
-            className={cn(styles.cell, styles[`l${level(item.count)}`])}
-            title={`Week of ${formatWeekLabel(item.week_start)} — ${item.count} ${
-              item.count === 1 ? "session" : "sessions"
-            }`}
-          />
-        ))}
-      </div>
+        <div
+          className={styles.strip}
+          role="img"
+          aria-label={`Training frequency: ${totalSessions} sessions across ${frequency.weeks} weeks`}
+        >
+          {items.map((item) => (
+            <span
+              key={item.week_start}
+              className={cn(styles.cell, styles[`l${level(item.count)}`])}
+              title={`Week of ${formatWeekLabel(item.week_start)} — ${item.count} ${
+                item.count === 1 ? "session" : "sessions"
+              }`}
+            />
+          ))}
+        </div>
 
-      <div className={styles.axis}>
-        {first && <span>{formatWeekLabel(first.week_start)}</span>}
-        <span className={styles.legend} aria-hidden>
-          <span className={styles.legendLabel}>Less</span>
-          <span className={cn(styles.cell, styles.l0)} />
-          <span className={cn(styles.cell, styles.l1)} />
-          <span className={cn(styles.cell, styles.l2)} />
-          <span className={cn(styles.cell, styles.l3)} />
-          <span className={cn(styles.cell, styles.l4)} />
-          <span className={styles.legendLabel}>More</span>
-        </span>
-        {last && <span>{formatWeekLabel(last.week_start)}</span>}
-      </div>
-    </Card>
+        <div className={styles.axis}>
+          {first && <span>{formatWeekLabel(first.week_start)}</span>}
+          <span className={styles.legend} aria-hidden>
+            <span className={styles.legendLabel}>Less</span>
+            <span className={cn(styles.cell, styles.l0)} />
+            <span className={cn(styles.cell, styles.l1)} />
+            <span className={cn(styles.cell, styles.l2)} />
+            <span className={cn(styles.cell, styles.l3)} />
+            <span className={cn(styles.cell, styles.l4)} />
+            <span className={styles.legendLabel}>More</span>
+          </span>
+          {last && <span>{formatWeekLabel(last.week_start)}</span>}
+        </div>
+      </Card>
+    </FadeIn>
   );
 }

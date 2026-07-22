@@ -20,7 +20,7 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
  * Press feedback is a cheap transform (docs/08 §4); disabled/loading states included.
  *
  * A shared (non-"use client") component: server code renders it statically; client code adds
- * `onClick`. See `Pressable`/`ExerciseCard` for spring-driven press on larger surfaces.
+ * `onClick`. See `Pressable` for the CSS press-scale used on larger surfaces (cards/tiles).
  */
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   {

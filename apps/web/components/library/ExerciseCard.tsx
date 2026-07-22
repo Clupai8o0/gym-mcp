@@ -10,9 +10,10 @@ import styles from "./ExerciseCard.module.css";
 /**
  * A catalog tile: illustration + name + primary-muscle/equipment tags, linking to the detail
  * page. The illustration carries a shared-element name so it morphs into the detail hero
- * (docs/08). Server-rendered; `Pressable` adds the interruptible press.
+ * (docs/08). Server-rendered; `Pressable` adds the press-scale. `priority` eager-loads the
+ * above-the-fold LCP tiles.
  */
-export function ExerciseCard({ exercise }: { exercise: Exercise }) {
+export function ExerciseCard({ exercise, priority = false }: { exercise: Exercise; priority?: boolean }) {
   const primaryMuscle = exercise.primary_muscles[0];
   return (
     <Link href={`/library/${exercise.slug}`} className={styles.link} prefetch={false}>
@@ -23,6 +24,7 @@ export function ExerciseCard({ exercise }: { exercise: Exercise }) {
             status={exercise.illustration_status}
             name={exercise.name}
             shareName={`exercise-illustration-${exercise.slug}`}
+            priority={priority}
           />
           <div className={styles.body}>
             <h3 className={styles.name}>{exercise.name}</h3>

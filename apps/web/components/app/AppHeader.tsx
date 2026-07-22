@@ -2,6 +2,8 @@ import Link from "next/link";
 
 import type { Me } from "@/lib/types";
 import { AppNav } from "./AppNav";
+import { Logo } from "./Logo";
+import { OfflineIndicator } from "./OfflineIndicator";
 import { UserMenu } from "./UserMenu";
 import styles from "./AppHeader.module.css";
 
@@ -15,10 +17,11 @@ export function AppHeader({ me }: { me: Me }) {
     <header className={styles.header} style={{ viewTransitionName: "app-header" }}>
       <div className={styles.inner}>
         <Link href="/library" className={styles.logo} aria-label="Tempo home">
-          <span className={styles.mark} aria-hidden />
+          <Logo />
           Tempo
         </Link>
         <AppNav />
+        <OfflineIndicator />
         <UserMenu me={me} />
       </div>
     </header>

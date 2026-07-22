@@ -4,12 +4,34 @@
   flex-direction: column;
 }
 
+/* Keyboard skip link — off-screen until focused, then a pill in the top-left (docs/08 a11y). */
+.skipLink {
+  position: fixed;
+  top: var(--space-3);
+  left: var(--space-3);
+  z-index: 100;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-full);
+  background-color: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  font-size: var(--text-sm);
+  transform: translateY(-200%);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.skipLink:focus {
+  transform: translateY(0);
+}
+
 .main {
   flex: 1;
   width: 100%;
   max-width: var(--container);
   margin-inline: auto;
   padding: var(--space-8) var(--space-6) var(--space-16);
+  /* When the skip link jumps here, clear the sticky header; suppress the container focus ring. */
+  scroll-margin-top: var(--nav-height);
+  outline: none;
 }
 
 @media (max-width: 560px) {

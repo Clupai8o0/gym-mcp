@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { EmptyState } from "@/components/ui";
 import { Pressable } from "@/components/motion/Pressable";
 import { Stagger } from "@/components/motion/Stagger";
 import type { SkillOverview, SkillProgress } from "@/lib/types";
@@ -44,6 +45,15 @@ export function SkillsBoard({ skills }: { skills: SkillOverview[] }) {
     setOpen(false);
   };
 
+  if (items.length === 0) {
+    return (
+      <EmptyState
+        title="No skills yet"
+        description="The calisthenics skill tree will appear here once it's set up for your account."
+      />
+    );
+  }
+
   return (
     <>
       <Stagger className={styles.grid} step={22} max={13}>
@@ -53,6 +63,7 @@ export function SkillsBoard({ skills }: { skills: SkillOverview[] }) {
             type="button"
             className={styles.card}
             aria-haspopup="dialog"
+            aria-expanded={open && editingSlug === skill.slug}
             aria-label={`Edit ${skill.name} — ${caption(skill)}`}
             onClick={() => {
               setEditingSlug(skill.slug);

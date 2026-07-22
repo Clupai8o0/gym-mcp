@@ -1,0 +1,17 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.recent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}

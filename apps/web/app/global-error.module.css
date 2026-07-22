@@ -1,0 +1,14 @@
+.body {
+  display: flex;
+  min-height: 100dvh;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  background-color: var(--bg);
+  color: var(--text);
+}
+
+.wrap {
+  width: 100%;
+  max-width: 34rem;
+}

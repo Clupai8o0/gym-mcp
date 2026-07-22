@@ -1,0 +1,6 @@
+.logo {
+  width: 1.125rem;
+  height: 1.125rem;
+  flex: none;
+  color: var(--accent);
+}

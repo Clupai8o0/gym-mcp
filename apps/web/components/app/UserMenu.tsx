@@ -36,7 +36,12 @@ export function UserMenu({ me }: { me: Me }) {
 
   return (
     <div className={styles.menu}>
-      <Link href="/settings" className={styles.identity} aria-label="Settings" title="Settings">
+      <Link
+        href="/settings"
+        className={styles.identity}
+        aria-label={`${me.name ?? me.email}, account settings`}
+        title="Account settings"
+      >
         {me.avatar_url ? (
           // eslint-disable-next-line @next/next/no-img-element -- tiny external avatar, not LCP
           <img src={me.avatar_url} alt="" className={styles.avatar} width={28} height={28} />

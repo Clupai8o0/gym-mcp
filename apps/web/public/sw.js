@@ -1,12 +1,18 @@
 /*
- * Tempo service worker (docs/07 §PWA/offline). Deliberately minimal for Phase 7 — it makes the app
- * installable and keeps the shell available offline so set logging can continue; install polish
- * (precache lists, richer offline UX) is Phase 9. It never touches the API origin: the offline
- * write-queue for set logging lives in the app (IndexedDB, `lib/offline`), independent of the SW,
- * so authenticated data is never served stale from cache.
+ * Tempo service worker (docs/07 §PWA/offline). Makes the app installable and keeps a usable shell
+ * offline so set logging can continue; the offline write-queue itself lives in the app (IndexedDB,
+ * `lib/offline`), independent of the SW, so authenticated data is never served stale from cache.
+ *
+ * It never touches the API origin: only same-origin GETs are handled. Navigations are network-first
+ * with a per-URL cache and a dedicated `/offline` fallback; static build assets are
+ * stale-while-revalidate. Only successful, same-origin ("basic") responses are ever cached, so a
+ * 5xx / redirect / opaque response can't poison the cache.
  */
-const CACHE = "tempo-shell-v1";
-const OFFLINE_URL = "/log";
+const VERSION = "v2";
+const CACHE = `tempo-shell-${VERSION}`;
+const OFFLINE_URL = "/offline";
+
+const cacheable = (response) => response && response.ok && response.type === "basic";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.add(OFFLINE_URL)));
@@ -29,28 +35,34 @@ self.addEventListener("fetch", (event) => {
   // Only handle same-origin GETs; API calls (cross-origin) pass straight through.
   if (request.method !== "GET" || url.origin !== self.location.origin) return;
 
-  // Navigations: network-first, falling back to the cached shell when offline.
+  // Navigations: network-first. Cache each page under its own URL so an offline revisit renders the
+  // right route; fall back to that cached page, then to the dedicated offline page.
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE).then((cache) => cache.put(OFFLINE_URL, copy));
+          if (cacheable(response)) {
+            const copy = response.clone();
+            caches.open(CACHE).then((cache) => cache.put(request, copy));
+          }
           return response;
         })
-        .catch(() => caches.match(OFFLINE_URL).then((cached) => cached ?? Response.error())),
+        .catch(async () => {
+          const cache = await caches.open(CACHE);
+          return (await cache.match(request)) ?? (await cache.match(OFFLINE_URL)) ?? Response.error();
+        }),
     );
     return;
   }
 
-  // Static build assets: stale-while-revalidate (immutable, safe to cache).
-  if (url.pathname.startsWith("/_next/static/") || url.pathname === "/icon.svg") {
+  // Immutable build assets + icons: stale-while-revalidate.
+  if (url.pathname.startsWith("/_next/static/") || /\.(?:svg|png|ico|webmanifest)$/.test(url.pathname)) {
     event.respondWith(
       caches.open(CACHE).then(async (cache) => {
         const cached = await cache.match(request);
         const network = fetch(request)
           .then((response) => {
-            cache.put(request, response.clone());
+            if (cacheable(response)) cache.put(request, response.clone());
             return response;
           })
           .catch(() => cached);

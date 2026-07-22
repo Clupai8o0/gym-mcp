@@ -25,10 +25,10 @@ export default async function SessionPage({
   params: Promise<{ sessionId: string }>;
 }) {
   const { sessionId } = await params;
-  const session = await loadSession(sessionId);
+  // Independent reads — fetch in parallel, then branch to notFound() (saves one round-trip).
+  const [session, me] = await Promise.all([loadSession(sessionId), getMe()]);
   if (!session) notFound();
 
-  const me = await getMe();
   const unitPref: UnitPref = me?.unit_pref === "lb" ? "lb" : "kg";
 
   return <SessionLogger session={session} unitPref={unitPref} />;

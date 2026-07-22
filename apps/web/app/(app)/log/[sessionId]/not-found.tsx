@@ -6,6 +6,7 @@ import { Button, EmptyState } from "@/components/ui";
 export default function SessionNotFound() {
   return (
     <EmptyState
+      titleAs="h1"
       title="Workout not found"
       description="This session doesn’t exist or isn’t yours. Start a new one to begin logging."
       action={

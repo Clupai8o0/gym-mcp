@@ -26,7 +26,7 @@
   display: grid;
   place-items: center;
   color: var(--text-muted);
-  background: radial-gradient(circle at center, var(--surface-3) 0%, var(--surface-2) 70%);
+  background-color: var(--surface-2);
 }
 
 .glyph {
@@ -36,7 +36,7 @@
 }
 
 .generating .glyph {
-  animation: pulse 1.6s var(--ease-in-out) infinite;
+  animation: pulse var(--dur-loop) var(--ease-in-out) infinite;
 }
 
 @keyframes pulse {

@@ -1,0 +1,41 @@
+.wrap {
+  display: flex;
+  min-height: 100dvh;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+}
+
+.card {
+  width: 100%;
+  max-width: 30rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--space-3);
+}
+
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  margin-bottom: var(--space-2);
+  border-radius: var(--radius-full);
+  color: var(--text-muted);
+  background-color: var(--surface-2);
+}
+
+.title {
+  font-size: var(--text-2xl);
+  letter-spacing: var(--tracking-tight);
+}
+
+.body {
+  max-width: 40ch;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+}

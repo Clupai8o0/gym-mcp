@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Badge, Button, Card, EmptyState } from "@/components/ui";
 import { ClientApiError, NetworkError, revokeConnection } from "@/lib/client";
@@ -18,6 +18,13 @@ export function ConnectionsList({ connections }: { connections: Connection[] }) 
   const [confirming, setConfirming] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+
+  // When the destructive confirm appears, move focus to the safe default (Cancel) so keyboard/SR
+  // users land on it rather than dropping to <body> as the trigger button unmounts.
+  useEffect(() => {
+    if (confirming) cancelRef.current?.focus();
+  }, [confirming]);
 
   const revoke = async (clientId: string) => {
     setBusy(clientId);
@@ -72,8 +79,11 @@ export function ConnectionsList({ connections }: { connections: Connection[] }) 
 
           {confirming === connection.client_id ? (
             <div className={styles.confirm}>
-              <span className={styles.confirmText}>Revoke access?</span>
+              <span className={styles.confirmText} role="alert">
+                Revoke access?
+              </span>
               <Button
+                ref={cancelRef}
                 variant="ghost"
                 size="sm"
                 onClick={() => setConfirming(null)}

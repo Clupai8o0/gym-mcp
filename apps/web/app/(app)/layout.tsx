@@ -11,8 +11,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const me = await requireUser();
   return (
     <div className={styles.shell}>
+      <a href="#main" className={styles.skipLink}>
+        Skip to content
+      </a>
       <AppHeader me={me} />
-      <main className={styles.main}>{children}</main>
+      <main id="main" tabIndex={-1} className={styles.main}>
+        {children}
+      </main>
     </div>
   );
 }

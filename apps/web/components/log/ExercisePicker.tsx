@@ -88,7 +88,7 @@ export function ExercisePicker({ open, onClose, onAdd, addedIds }: ExercisePicke
         className={styles.search}
       />
 
-      <div className={styles.results} role="listbox" aria-label="Search results">
+      <div className={styles.results} aria-label="Search results">
         {loading ? (
           <div className={styles.state}>
             <Spinner />
@@ -105,11 +105,10 @@ export function ExercisePicker({ open, onClose, onAdd, addedIds }: ExercisePicke
                 <li key={exercise.id}>
                   <button
                     type="button"
-                    role="option"
-                    aria-selected={added}
                     className={styles.result}
                     onClick={() => pick(exercise)}
                     disabled={added}
+                    aria-label={added ? `${exercise.name}, already added` : `Add ${exercise.name}`}
                   >
                     <span className={styles.resultName}>{exercise.name}</span>
                     <span className={styles.resultMeta}>

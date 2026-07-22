@@ -1,5 +1,3 @@
-"use client";
-
 import { cn } from "@/lib/cn";
 import styles from "./SyncStatus.module.css";
 

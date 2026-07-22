@@ -16,6 +16,13 @@ export const durations = {
   slow: 0.32,
 } as const;
 
+/** The PR count-up run time in **ms** — mirrors the `--dur-count` CSS token; kept <500ms budget. */
+export const countUpMs = 300;
+
+/** Press-feedback scales — mirror the `--press-scale*` CSS tokens (docs/08 §3). */
+export const pressScale = 0.97;
+export const pressScaleStrong = 0.94;
+
 /** The one spring for anything the user "grabs" or that should feel physical (docs/08 §3). */
 export const spring = {
   type: "spring",

@@ -3,13 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useReducedMotion } from "motion/react";
 
-import { easings } from "@/design/motion";
+import { countUpMs, easings } from "@/design/motion";
 
 export interface CountUpProps {
   value: number;
   /** Render the (possibly fractional) animated value. */
   format: (n: number) => string;
-  /** Total run time; kept short so the PR moment stays <500ms (docs/08). */
+  /** Total run time; kept short so the PR moment stays <500ms (docs/08). Defaults to `--dur-count`. */
   durationMs?: number;
   className?: string;
 }
@@ -27,7 +27,7 @@ function easeOut(t: number): number {
  * signature moment). `transform`/text only (no layout thrash); reduced motion shows the final
  * value immediately.
  */
-export function CountUp({ value, format, durationMs = 420, className }: CountUpProps) {
+export function CountUp({ value, format, durationMs = countUpMs, className }: CountUpProps) {
   const reduce = useReducedMotion();
   const [display, setDisplay] = useState(reduce ? value : 0);
   const frame = useRef<number>(0);

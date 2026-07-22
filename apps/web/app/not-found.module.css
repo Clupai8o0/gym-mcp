@@ -1,0 +1,12 @@
+.wrap {
+  display: flex;
+  min-height: 100dvh;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+}
+
+.inner {
+  width: 100%;
+  max-width: 34rem;
+}

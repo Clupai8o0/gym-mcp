@@ -1,12 +1,17 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 
 import { Button, Input, Select } from "@/components/ui";
-import { Sheet } from "@/components/motion/Sheet";
 import { ClientApiError, NetworkError, updateSkillProgress } from "@/lib/client";
 import type { SkillOverview, SkillProgress } from "@/lib/types";
 import styles from "./SkillEditor.module.css";
+
+// The editor Sheet opens only on a tap, so defer `motion` off the Dashboard/Skills initial bundle.
+const Sheet = dynamic(() => import("@/components/motion/Sheet").then((m) => m.Sheet), {
+  ssr: false,
+});
 
 interface SkillFormProps {
   skill: SkillOverview;

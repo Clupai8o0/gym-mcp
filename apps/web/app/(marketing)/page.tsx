@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Button, Card } from "@/components/ui";
+import { Logo } from "@/components/app/Logo";
 import { FadeIn } from "@/components/motion/FadeIn";
 import { loginUrl } from "@/lib/auth";
 import styles from "./page.module.css";
@@ -28,7 +29,7 @@ export default function MarketingPage() {
     <div className={styles.root}>
       <header className={styles.topbar}>
         <span className={styles.logo}>
-          <span className={styles.mark} aria-hidden />
+          <Logo />
           Tempo
         </span>
         <Link href={loginUrl("/library")}>
@@ -66,7 +67,7 @@ export default function MarketingPage() {
 
         <section className={styles.features} aria-label="What Tempo does">
           {FEATURES.map((feature, index) => (
-            <FadeIn key={feature.eyebrow} delay={index * 60}>
+            <FadeIn key={feature.eyebrow} delay={index * 40}>
               <Card className={styles.feature}>
                 <p className="eyebrow">{feature.eyebrow}</p>
                 <h2 className={styles.featureTitle}>{feature.title}</h2>

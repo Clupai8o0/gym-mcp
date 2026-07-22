@@ -1,10 +1,10 @@
-import { cache } from "react";
+import { cache, Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 
 import { IllustrationImage } from "@/components/library";
-import { Badge, Button, Card } from "@/components/ui";
+import { Badge, Button, Card, Skeleton } from "@/components/ui";
 import { FadeIn } from "@/components/motion/FadeIn";
 import { getExerciseBySlug, listPrsForExercise } from "@/lib/api";
 import { formatDate, formatPrValue, prTypeLabel, titleCase } from "@/lib/format";
@@ -37,6 +37,38 @@ function MetaRow({ label, children }: { label: string; children: React.ReactNode
   );
 }
 
+/** Streams in after the hero — the PRs are below the fold and must not gate the LCP illustration. */
+async function PrRecords({ exerciseId }: { exerciseId: string }) {
+  const prs = await listPrsForExercise(exerciseId);
+  if (prs.items.length === 0) {
+    return (
+      <p className={styles.empty}>
+        No personal records yet — log a set for this exercise to start tracking.
+      </p>
+    );
+  }
+  return (
+    <div className={styles.prGrid}>
+      {prs.items.map((pr) => (
+        <Card key={pr.id} className={styles.prCard}>
+          <p className={styles.prLabel}>{prTypeLabel(pr.pr_type)}</p>
+          <p className={`${styles.prValue} tnum`}>{formatPrValue(pr.value, pr.unit)}</p>
+          <p className={styles.prDate}>{formatDate(pr.achieved_at)}</p>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function PrRecordsFallback() {
+  return (
+    <div className={styles.prGrid} aria-hidden>
+      <Skeleton height="6rem" />
+      <Skeleton height="6rem" />
+    </div>
+  );
+}
+
 export default async function ExerciseDetailPage({
   params,
 }: {
@@ -45,8 +77,6 @@ export default async function ExerciseDetailPage({
   const { slug } = await params;
   const exercise: ExerciseDetail | null = await loadExercise(slug);
   if (!exercise) notFound();
-
-  const prs = await listPrsForExercise(exercise.id);
 
   const attributes = [
     exercise.category && { label: "Category", value: titleCase(exercise.category) },
@@ -134,21 +164,9 @@ export default async function ExerciseDetailPage({
           <h2 id="prs" className={styles.sectionTitle}>
             Your records
           </h2>
-          {prs.items.length > 0 ? (
-            <div className={styles.prGrid}>
-              {prs.items.map((pr) => (
-                <Card key={pr.id} className={styles.prCard}>
-                  <p className={styles.prLabel}>{prTypeLabel(pr.pr_type)}</p>
-                  <p className={`${styles.prValue} tnum`}>{formatPrValue(pr.value, pr.unit)}</p>
-                  <p className={styles.prDate}>{formatDate(pr.achieved_at)}</p>
-                </Card>
-              ))}
-            </div>
-          ) : (
-            <p className={styles.empty}>
-              No personal records yet — log a set for this exercise to start tracking.
-            </p>
-          )}
+          <Suspense fallback={<PrRecordsFallback />}>
+            <PrRecords exerciseId={exercise.id} />
+          </Suspense>
         </section>
       </div>
     </div>

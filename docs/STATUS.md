@@ -524,5 +524,78 @@ Not required for Phase 0. Track here so they don't become surprise blockers:
   tables — no AS-semantics change) in `01`. New web dep: **none** (uses the existing `motion` + generated
   types). No new env, **no migration** (reads existing `illustration_*` columns / OAuth tables; updates the
   existing `unit_pref`). Regenerated `apps/web/openapi.json` + `lib/api-types.ts`.
-## Phase 9 — Flagship polish pass — NOT STARTED
+## Phase 9 — Flagship polish pass — IN PROGRESS (built + self-verified; **Antigravity final review + live authed render / Lighthouse outstanding**)
+- **Branch/PR:** `phase-9-polish` (cut from `phase-8-dashboard-skills` HEAD, since Phase 8 is not
+  yet merged to `main`; committed locally, push + PR pending human go-ahead).
+- **⚠️ Gate not yet satisfied:** this phase's gate is the **final Antigravity frontend review** across
+  every surface (docs/08 rubric). The code is complete, builds/lints/typechecks clean, and the
+  renderable public surfaces are screenshot-verified; the Antigravity pass, a **live authed render**,
+  and the **Lighthouse/CWV check on a deployed preview** wait on the same external prereqs as Phases
+  3–8 (Neon provisioning, Google OIDC client, deploy).
+- **Approach:** ran **four parallel read-only audits** (motion & signature moments · component states
+  & a11y · performance/CWV · PWA/offline/aesthetic) against the `08` rubric + `FRONTEND_REVIEW.md`,
+  then executed the deduplicated findings. Baseline was already strong (token discipline clean, motion
+  layer solid, states/loading broadly covered) — this pass closed the gaps and raised craft.
+- **Scope (shipped) — pure frontend slice; no backend/API/migration change:**
+  - **Error + loading states (rubric §4):** added the missing **error boundaries** — root
+    `app/global-error.tsx` + shared `app/(app)/error.tsx` (Next 16 `unstable_retry`), a new reusable
+    `ui/ErrorState`, a branded root `app/not-found.tsx`, and the **three missing `loading.tsx`
+    skeletons** (`/log`, `/settings`, `/dashboard/skills`). `EmptyState` gained a `titleAs` so
+    full-page not-founds start at `h1`.
+  - **PWA install polish (docs/10; deferred from Phase 7):** generated the real **icon set** — `192`,
+    `512`, dedicated **maskable** (full-bleed, mark in the 80% safe zone), **`apple-touch-icon` (180)**,
+    and `favicon-16/32` — via a committed, reproducible `scripts/generate-icons.mjs` (sharp). Rewrote
+    `manifest.webmanifest` (`id`, `lang`/`dir`, `categories`, `shortcuts`, all icon purposes) and the
+    layout `icons`/`apple` metadata. **Install affordance** `pwa/InstallCard` (captures
+    `beforeinstallprompt`; iOS "Add to Home Screen" copy; hides when standalone). **Service-worker
+    hardening:** only cache `ok`+`basic` responses (no more poisoning), a dedicated static **`/offline`**
+    fallback + per-URL navigation cache (replacing the single overwritten key), cache bump `v2`, and a
+    `Cache-Control: no-cache` header on `/sw.js`. **Global `OfflineIndicator`** chip in the header +
+    `useOnline` hook; iOS **safe-area** (`viewport-fit: cover` + header inset); **unified 3-bar `Logo`**
+    reused by the header + marketing so the in-product mark matches the app icon.
+  - **Accessibility (WCAG AA):** `--text-muted` nudged `#7d8187 → #868a90` to clear 4.5:1 on the
+    elevated `--surface`/`--surface-2` fills (it failed there); new `--input-border` (`#676b71` dark /
+    `#8b8d93` light) gives form controls a **3:1** resting boundary (1.4.11); `Sheet` got a real **focus
+    trap + background `inert`**; `ExercisePicker` dropped the misused listbox/option ARIA; destructive
+    `ConnectionsList` confirm now moves focus to Cancel + announces via `role="alert"`; added a **skip
+    link** + `#main`; `aria-expanded` on dialog triggers; `UserMenu` label-in-name fixed; the global
+    focus ring no longer rewrites `border-radius` (was reshaping pills).
+  - **Motion rulebook:** `Sheet`/`RestTimer` exits now accelerate with `--ease-in` (were reusing
+    ease-out); `SetRow` gained a symmetric exit via `AnimatePresence`; tokenized the count-up
+    (`--dur-count`), ambient loops (`--dur-loop`), and press scales (`--press-scale*`); the reduced-motion
+    `Spinner` keeps a gentle spin (was frozen by the global reset → read as "stuck"); **removed the two
+    gradients** (Skeleton shimmer → opacity pulse; illustration placeholder → flat) per the craft rubric;
+    marketing stagger 60 → 40ms; `FrequencyHeatmap` gained an entrance reveal; hoisted the celebrate
+    timeout to a named constant.
+  - **Performance / CWV:** first Library row now eager-loads (`priority`) as the LCP candidates;
+    **`motion` removed from the Library/Dashboard initial bundles** (`Pressable` → pure-CSS `:active`;
+    `Sheet` `next/dynamic`-imported in `FilterBar`/`SkillEditor`); the detail page streams the hero
+    immediately with the PRs behind `<Suspense>` (no longer LCP-blocking); session page parallelized
+    with `Promise.all`; `next.config` images tuned (**AVIF**, 1-year `minimumCacheTTL`, trimmed
+    device/image sizes); `SyncStatus` de-`"use client"`-ed.
+- **DoD evidence:**
+  - **`next build` → success**, 9 static pages generated; `/` + `/offline` prerender **static** (the
+    SW precaches `/offline`), all authed routes correctly **dynamic**. `tsc --noEmit` + `eslint .` clean.
+  - **Icons verified** at correct dimensions (192/512/maskable/apple-touch/favicons); maskable mark sits
+    inside the safe zone (visually checked).
+  - **Public surfaces screenshot-verified** on `next start`: marketing (unified Logo, x.ai aesthetic
+    intact), the new `/offline` page, and the branded 404 — no console/hydration errors.
+  - **API untouched** — no backend edits this phase, so the Phase 8 suite (`195 passed`) and the
+    MCP↔REST contract/architecture guards are unaffected; web has no runtime test suite (build+lint+type
+    are its gates).
+- **Outstanding (gated on external prereqs — Neon DB + Google OIDC client + deploy, same as Phases 3–8):**
+  - [ ] **Antigravity final frontend-review** across all surfaces (docs/08 gate), incl. reduced-motion
+        verified with the OS setting on and keyboard/focus walk-throughs on the authed pages.
+  - [ ] Live authed render of every surface against a **seeded Neon DB + real Google session** (the
+        contrast/motion/perf changes verified in a real logged-in session).
+  - [ ] **Lighthouse/CWV** budget check (LCP<2.5s, CLS<0.1, INP<200ms) on the deployed preview.
+  - [ ] Live install (Android `beforeinstallprompt` + iOS A2HS) and an offline navigation hitting the
+        `/offline` fallback on the deployed PWA.
+- **Notes / decisions (logged as D30 in `01`):** three deliberate balances — (a) `--input-border` at a
+  visible 3:1 for functional form controls (a11y 1.4.11) while decorative card hairlines stay `--border`;
+  (b) **did not** cache catalog reads (perf audit M3) because `list/get exercises` include per-user custom
+  rows — correctness over the TTFB win; (c) **kept `motion` out of the app-shell nav** — no `layoutId`
+  sliding tab indicator (motion audit #7), since that would reintroduce `motion` to every authed page's
+  initial bundle, undoing the perf work; the snap indicators stay. New web deps: **none** (sharp for the
+  icon script is transitive via Next). No new env, **no migration**.
 ## Phase 10 — Deploy & launch — NOT STARTED

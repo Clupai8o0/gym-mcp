@@ -27,13 +27,31 @@ export const metadata: Metadata = {
   description:
     "Personal-first, share-ready workout app — an illustrated gym library, fast logging, and a progress dashboard.",
   manifest: "/manifest.webmanifest",
-  icons: { icon: "/icon.svg", apple: "/icon.svg" },
+  // The SVG tab favicon scales everywhere; the PNGs cover install surfaces that ignore SVG
+  // (Android home screen, iOS apple-touch — which won't render an SVG at all).
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/favicon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/favicon-16.png", sizes: "16x16", type: "image/png" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
   appleWebApp: { capable: true, title: "Tempo", statusBarStyle: "black-translucent" },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0a0a0a",
+  // Theme-aware chrome color (dark is the signature; light follows the token variant).
+  themeColor: [
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+  ],
   colorScheme: "dark light",
+  // Draw behind the iOS status bar so the translucent bar sits over app chrome (safe-area
+  // padding on the sticky header keeps content clear — AppHeader.module.css).
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

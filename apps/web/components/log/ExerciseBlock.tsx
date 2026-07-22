@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { AnimatePresence } from "motion/react";
 
 import { Badge } from "@/components/ui";
 import { titleCase } from "@/lib/format";
@@ -90,16 +91,19 @@ export function ExerciseBlock({
 
       {sets.length > 0 && (
         <ul className={styles.sets}>
-          {sets.map((set) => (
-            <SetRow
-              key={set.clientId}
-              set={set}
-              unitPref={unitPref}
-              celebrate={set.clientId === celebrateId}
-              onDelete={() => onDeleteSet(set.clientId)}
-              onRetry={() => onRetrySet(set.clientId)}
-            />
-          ))}
+          {/* initial={false}: sets already present on load don't animate; new/removed ones do. */}
+          <AnimatePresence initial={false}>
+            {sets.map((set) => (
+              <SetRow
+                key={set.clientId}
+                set={set}
+                unitPref={unitPref}
+                celebrate={set.clientId === celebrateId}
+                onDelete={() => onDeleteSet(set.clientId)}
+                onRetry={() => onRetrySet(set.clientId)}
+              />
+            ))}
+          </AnimatePresence>
         </ul>
       )}
 

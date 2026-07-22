@@ -7,8 +7,9 @@ import styles from "./ExerciseGrid.module.css";
 export function ExerciseGrid({ exercises }: { exercises: Exercise[] }) {
   return (
     <Stagger className={styles.grid}>
-      {exercises.map((exercise) => (
-        <ExerciseCard key={exercise.id} exercise={exercise} />
+      {exercises.map((exercise, index) => (
+        // Eager-load the first row (the LCP candidates); the rest lazy-load on scroll (docs/07 CWV).
+        <ExerciseCard key={exercise.id} exercise={exercise} priority={index < 6} />
       ))}
     </Stagger>
   );

@@ -23,13 +23,6 @@
   font-weight: var(--weight-medium);
 }
 
-.mark {
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: var(--radius-full);
-  background-color: var(--accent);
-}
-
 .hero {
   max-width: var(--container);
   width: 100%;
