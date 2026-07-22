@@ -90,6 +90,19 @@ class Settings(BaseSettings):
     # (a coarse, stateless backstop — see services/oauth.register_client).
     oauth_registration_rate_limit_per_minute: int = 20
 
+    # ── Catalog illustrations: Vercel Blob + OpenAI GPT Image 2 (docs/06) ─────────────
+    # Storage for the generated line-art. Empty in dev/tests (the batch job + on-demand
+    # endpoint fail fast with a clear message until provisioned — see app/images/).
+    blob_read_write_token: str = ""
+    # OpenAI image generation. Model is pinned (``gpt-image-1`` retires 2026-10-23, so we
+    # do not use it — docs/06). Size/quality/background match the locked minimal line-art
+    # style; low quality tolerates the style and keeps the one-time batch cost in range.
+    openai_api_key: str = ""
+    openai_image_model: str = "gpt-image-2"
+    openai_image_size: str = "1024x1024"
+    openai_image_quality: str = "low"  # low|medium|high — low suits the minimal style
+    openai_image_background: str = "transparent"  # transparent PNG → place on any surface
+
     @property
     def cors_allow_origins(self) -> list[str]:
         """The exact CORS allowlist: ``web_origin`` plus any configured preview origins."""

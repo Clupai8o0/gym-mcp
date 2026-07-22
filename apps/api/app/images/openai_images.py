@@ -1,0 +1,71 @@
+"""OpenAI GPT Image 2 protocol adapter (docs/06). ``httpx`` only — no DB, no web framework.
+
+An isolated I/O boundary (like ``auth/google.py``): it turns a prompt into PNG bytes via the
+Images API and nothing else. Model / size / quality / transparent-background default from
+settings (pinned; docs/06). Tests stub :func:`generate_png`, so the suite never needs a key or
+the network.
+
+The exact request/response contract should be confirmed against the current OpenAI Images API
+before the first live batch run; it is deliberately confined to this one module.
+"""
+
+from __future__ import annotations
+
+import base64
+
+import httpx
+
+from app.core.config import get_settings
+
+_ENDPOINT = "https://api.openai.com/v1/images/generations"
+# Image generation is slow; give it a wide ceiling. Batch concurrency is bounded by the caller.
+_HTTP_TIMEOUT_SECONDS = 120.0
+
+
+class ImageGenerationError(Exception):
+    """Image generation failed — missing key, upstream error, or a malformed response."""
+
+
+async def generate_png(
+    *,
+    prompt: str,
+    size: str | None = None,
+    quality: str | None = None,
+    model: str | None = None,
+    background: str | None = None,
+) -> bytes:
+    """Generate one PNG for ``prompt`` and return its raw bytes.
+
+    GPT-Image models return base64-encoded image data (``b64_json``); we decode it to bytes for
+    upload. Raises :class:`ImageGenerationError` on any failure.
+    """
+    settings = get_settings()
+    api_key = settings.openai_api_key
+    if not api_key:
+        raise ImageGenerationError("OPENAI_API_KEY is not configured")
+
+    body = {
+        "model": model or settings.openai_image_model,
+        "prompt": prompt,
+        "size": size or settings.openai_image_size,
+        "quality": quality or settings.openai_image_quality,
+        "background": background or settings.openai_image_background,
+        "n": 1,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT_SECONDS) as client:
+            response = await client.post(
+                _ENDPOINT, json=body, headers={"Authorization": f"Bearer {api_key}"}
+            )
+    except httpx.HTTPError as exc:
+        raise ImageGenerationError(f"OpenAI request failed: {exc}") from exc
+
+    if response.status_code != 200:
+        raise ImageGenerationError(
+            f"OpenAI image generation failed ({response.status_code}): {response.text[:200]}"
+        )
+    try:
+        b64 = response.json()["data"][0]["b64_json"]
+    except (KeyError, IndexError, TypeError, ValueError) as exc:
+        raise ImageGenerationError("OpenAI response contained no image data") from exc
+    return base64.b64decode(b64)

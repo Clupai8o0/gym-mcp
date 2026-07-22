@@ -14,7 +14,7 @@ from app.schemas.exercises import (
     ExerciseListOut,
     ExerciseOut,
 )
-from app.services import exercises
+from app.services import exercises, images
 
 router = APIRouter(prefix="/api/exercises", tags=["exercises"])
 
@@ -66,4 +66,20 @@ async def get_exercise(
     db: AsyncSession = Depends(get_db),
 ) -> ExerciseDetailOut:
     exercise = await exercises.get(db, user_id=cu.user_id, exercise_id=exercise_id)
+    return ExerciseDetailOut.model_validate(exercise)
+
+
+@router.post("/{exercise_id}/illustration", response_model=ExerciseDetailOut)
+async def ensure_illustration(
+    exercise_id: uuid.UUID,
+    cu: CurrentUser = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ExerciseDetailOut:
+    """On-demand fallback (docs/06): generate + persist this exercise's illustration if missing.
+
+    Returns the exercise; ``illustration_status`` is ``ready`` (with ``illustration_url``) on
+    success, or ``generating`` if a batch run is already producing it. 503 if the image
+    provider/Blob is unavailable.
+    """
+    exercise = await images.ensure(db, user_id=cu.user_id, exercise_id=exercise_id)
     return ExerciseDetailOut.model_validate(exercise)

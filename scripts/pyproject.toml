@@ -1,0 +1,34 @@
+[project]
+name = "tempo-scripts"
+version = "0.1.0"
+description = "Tempo offline jobs (catalog seed + illustration batch). Run locally or in CI, never on Vercel (they exceed the 300s function limit). See docs/06-catalog-and-images.md."
+requires-python = ">=3.13,<3.14"
+# The scripts import the api's shared code (app.services.*, app.models, app.core, app.catalog,
+# app.images) via a sys.path shim to ../apps/api — the "one Python brain" (no duplicated logic).
+# These are that import graph's third-party deps. fastapi is present because app.core.errors
+# (raised by the services the illustration job calls) imports it; the scripts run no web server.
+dependencies = [
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30",
+    "httpx>=0.27",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "fastapi>=0.115",
+]
+
+# No [build-system]: a uv "virtual" project (like apps/api). Nothing here is installed; the
+# scripts are run directly (`uv run --project scripts python scripts/<name>.py`).
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]
+# E501: black owns wrapping. ASYNC240: these are one-shot offline CLIs — blocking pathlib file
+# I/O is intentional and fine (there is no request loop to starve).
+ignore = ["E501", "ASYNC240"]
+
+[tool.black]
+line-length = 100
+target-version = ["py313"]

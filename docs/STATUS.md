@@ -22,7 +22,13 @@ Not required for Phase 0. Track here so they don't become surprise blockers:
       `SESSION_SIGNING_KEY`/`TOKEN_HASH_PEPPER`** is the remaining external step before the
       **live claude.ai handshake** + the **human security sign-off** can be recorded.
 - [ ] Vercel Blob store (`BLOB_READ_WRITE_TOKEN`) — **Phase 4**
+      ⤷ the illustration pipeline (seed + batch + on-demand endpoint) is **built and verified**
+      (OpenAI/Blob calls stubbed in tests); **setting `BLOB_READ_WRITE_TOKEN`** is the remaining
+      external step before art can be generated/stored.
 - [ ] OpenAI API key + GPT Image 2 access — **Phase 4**
+      ⤷ **setting `OPENAI_API_KEY`** (+ optional `OPENAI_IMAGE_*` tunables) is the other remaining
+      step; together with the Blob token it unblocks the **design sign-off** (exemplars) and the
+      **full batch run** — the two outstanding Phase 4 gate items.
 - [ ] Domain / DNS for `tempo.clupai.com` + `api.tempo.clupai.com`; two Vercel projects — **Phase 10**
 
 ---
@@ -207,7 +213,68 @@ Not required for Phase 0. Track here so they don't become surprise blockers:
   authlib for JOSE). New deps: `authlib`, `httpx`, `python-multipart`. New env in
   `.env.example` (issuer/cookie/secret/Google/redirect-allowlist + optional TTL tunables).
   **`ensure_dev_user` is now a test-only helper** (no longer any production auth path).
-## Phase 4 — Catalog import + illustration pipeline — NOT STARTED
+## Phase 4 — Catalog import + illustration pipeline — IN PROGRESS (built + self-verified; **design sign-off + live batch run outstanding — gated on the OpenAI/Blob prereqs**)
+- **Branch/PR:** `phase-4-catalog-images` (cut from `phase-3-oauth` HEAD, since Phase 3 is not
+  yet merged to `main`; committed locally, push + PR pending human go-ahead).
+- **⚠️ Gate not yet satisfied:** this phase's gate is a **design sign-off on the style
+  exemplars** (`06` reference-locking). The prompt template is **locked + committed** and the
+  exemplar generator is built (`--exemplars`), but generating the exemplars and the full batch
+  needs a real **`OPENAI_API_KEY` + `BLOB_READ_WRITE_TOKEN`** (external prereqs) — so the
+  sign-off and the "majority of rows `ready`" DoD line are **outstanding** (analogous to Phase
+  3's outstanding human sign-off + live handshake). The **catalog-import half is fully done and
+  proven** (below).
+- **Scope (shipped):**
+  - **Catalog import (fully working):** `app/catalog/dataset.py` (adapter) validates the pinned
+    free-exercise-db against a Pydantic schema, maps it to `CatalogRecord` (docs/06 field
+    table), reports **enum drift** vs the `exercises` CHECKs, and de-collides slugs
+    deterministically; `app/services/catalog.py` **upserts by `(source, source_id)`** (insert /
+    update / skip counts), **preserves generated art + custom rows** on re-import.
+    `scripts/seed_catalog.py` is a thin CLI over them (unpooled URL; `--source`/`--ref`/
+    `--dry-run`).
+  - **Illustration pipeline (built + test-backed; awaits keys for a live run):** `app/images/`
+    adapters — `prompt.py` (the **LOCKED** monochrome line-art prompt + `STYLE_VERSION` + hash),
+    `openai_images.py` (GPT Image 2 via httpx), `blob.py` (Vercel Blob upload to the stable
+    `exercises/{slug}.png` key), `cost.py` (batch cost estimate). `app/services/images.py`
+    orchestrates: `generate_and_store` (the **shared** single-image routine → status +
+    `illustration_url` + `illustration_meta` provenance) and on-demand `ensure` (visibility via
+    the catalog service, an **advisory-lock** dedup so concurrent callers can't double-generate,
+    ready-skip / in-progress / 503-on-provider-failure). `scripts/generate_illustrations.py`
+    (idempotent, resumable, bounded concurrency, per-row commit, cost report, `--exemplars`).
+  - **On-demand endpoint:** `POST /api/exercises/{id}/illustration` (thin adapter → `images.ensure`).
+  - **`scripts/` is its own `uv` project** (own `pyproject.toml` + `uv.lock`) importing `apps/api`
+    via a `sys.path` shim — same `services/` as REST/MCP (D20). New config
+    (`blob_read_write_token`, `openai_api_key`, `openai_image_*`) + `.env.example`. Additive
+    `unavailable` (503) `ErrorKind` (D19). **No new migration** — Phase 4 fills the existing
+    `exercises.illustration_*` columns from `0001`.
+- **DoD evidence:**
+  - **`pnpm exec turbo run build lint typecheck test` → 7/7 successful** (web cached; api
+    build+lint+typecheck+**test**). API `ruff` + `black --check` clean; `mypy` (strict) clean
+    over **118 files**.
+  - **`uv run pytest -q` → 157 passed** (was 120 → **+37**): catalog upsert (insert/update/skip,
+    idempotent re-run, art + custom preservation), dataset parse (mapping, null optionals, drift
+    + duplicate-id rejection, slug de-collision), prompt (clauses, body-weight, monochrome
+    default, stable hash), cost (docs range), images service (ready-provenance, failed-then-raise,
+    ensure generate/ready-skip/in-progress/404/503), and the `POST …/illustration` router
+    (200 ready / 404 / 503). Architecture guard extended to the `catalog` + `images` adapters.
+  - **Seed proven end-to-end** against local Postgres (an empty DB ≡ an empty Neon branch): after
+    `alembic upgrade head`, `seed_catalog.py` → **inserted=873** (= dataset size; DoD "count ≈
+    dataset"); **re-run → skipped=873, inserted=0, updated=0** (DoD "re-running changes nothing").
+    All 873 global, `illustration_status='pending'`, 873 distinct slugs. The **pinned-SHA network
+    fetch** path also verified (`--dry-run` → 873 parsed from `free-exercise-db@b0eed061e1`).
+  - **Cost report** builds: 873 × low ≈ **$9.60**, × medium ≈ **$36.70** (docs/06 ~$5–$35 band).
+- **Outstanding (gated on external prereqs — `OPENAI_API_KEY` + `BLOB_READ_WRITE_TOKEN`):**
+  - [ ] Run `generate_illustrations.py --exemplars` → **design sign-off** on the 5–8 exemplars.
+  - [ ] Run the full batch → **majority of rows `ready`** with Blob URLs + `illustration_meta`
+        provenance; produce the real cost report.
+  - [ ] Live on-demand generation for a custom exercise (endpoint + advisory-lock dedup are
+        test-verified with a stubbed provider; only the real OpenAI/Blob round-trip remains).
+  - [ ] Confirm the OpenAI Images + Vercel Blob HTTP contracts against current docs before the
+        live batch (each adapter flags where).
+- **Notes / decisions:** logged **D18** (pinned dataset SHA `b0eed06`), **D19** (additive
+  `unavailable`/503 error kind), **D20** (`scripts/` as an independent uv project sharing the
+  `services/` brain) in `01`. New deps: **none in `apps/api`** — OpenAI + Blob use the existing
+  `httpx`; `scripts/` declares its own (incl. `fastapi`, pulled in transitively by the services
+  it calls). `gpt-image-2` pinned as the model default (D8).
 ## Phase 5 — MCP server (Python) + connector verification — NOT STARTED
 ## Phase 6 — Slice: Design system + app shell + Library — NOT STARTED
 ## Phase 7 — Slice: Log a workout (UI + MCP parity) — NOT STARTED

@@ -29,6 +29,7 @@ class ErrorKind(StrEnum):
     FORBIDDEN = "forbidden"
     CONFLICT = "conflict"
     VALIDATION = "validation"
+    UNAVAILABLE = "unavailable"
 
 
 STATUS_BY_KIND: dict[ErrorKind, int] = {
@@ -37,6 +38,7 @@ STATUS_BY_KIND: dict[ErrorKind, int] = {
     ErrorKind.FORBIDDEN: 403,
     ErrorKind.CONFLICT: 409,
     ErrorKind.VALIDATION: 422,
+    ErrorKind.UNAVAILABLE: 503,
 }
 
 
@@ -73,6 +75,11 @@ def conflict(message: str, **details: Any) -> ServiceError:
 
 def validation(message: str, **details: Any) -> ServiceError:
     return ServiceError(ErrorKind.VALIDATION, message, details=details or None)
+
+
+def unavailable(message: str, **details: Any) -> ServiceError:
+    """A dependency (image provider / Blob storage) failed transiently — retry later (503)."""
+    return ServiceError(ErrorKind.UNAVAILABLE, message, details=details or None)
 
 
 def _envelope(kind: str, message: str, details: Any | None = None) -> dict[str, Any]:

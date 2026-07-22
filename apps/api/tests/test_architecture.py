@@ -12,9 +12,16 @@ from pathlib import Path
 
 _APP_DIR = Path(__file__).resolve().parent.parent / "app"
 _ROUTERS_DIR = _APP_DIR / "api" / "routers"
-# The Phase 3 adapter packages (auth/OAuth/MCP) are held to the same rule as routers:
-# thin adapters that call services — never build queries or touch the DB directly.
-_ADAPTER_DIRS = (_APP_DIR / "auth", _APP_DIR / "oauth", _APP_DIR / "mcp")
+# The adapter packages are held to the same rule as routers: thin adapters that call services
+# — never build queries or touch the DB directly. Phase 3 added auth/OAuth/MCP; Phase 4 added
+# the catalog (dataset I/O) and images (OpenAI/Blob/prompt) adapters.
+_ADAPTER_DIRS = (
+    _APP_DIR / "auth",
+    _APP_DIR / "oauth",
+    _APP_DIR / "mcp",
+    _APP_DIR / "catalog",
+    _APP_DIR / "images",
+)
 
 # Patterns that signal an adapter is doing the DB's / a service's job.
 _FORBIDDEN = {
@@ -51,10 +58,8 @@ def test_no_db_access_in_routers() -> None:
     assert not offenders, "business logic / DB access leaked into routers:\n" + "\n".join(offenders)
 
 
-def test_no_db_access_in_auth_oauth_adapters() -> None:
+def test_no_db_access_in_adapters() -> None:
     offenders: list[str] = []
     for directory in _ADAPTER_DIRS:
         offenders.extend(_scan(directory))
-    assert not offenders, "DB access leaked into an auth/OAuth/MCP adapter:\n" + "\n".join(
-        offenders
-    )
+    assert not offenders, "DB access leaked into an adapter package:\n" + "\n".join(offenders)
