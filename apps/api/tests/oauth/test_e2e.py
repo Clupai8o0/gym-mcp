@@ -3,6 +3,10 @@
 discovery → register (DCR) → authorize (logged-in) → consent → token (PKCE) → call /mcp →
 refresh (rotation) → reuse the old refresh (→ chain revocation). Google login is bypassed by
 forging a valid web-session cookie; every other step is the real endpoint.
+
+The ``/mcp`` steps exercise the **real** MCP server (Phase 5 replaced the Phase-3 probe):
+``mcp_http`` runs the Streamable-HTTP session manager against the same rolled-back session the
+OAuth flow writes tokens into, so a minted token really lists tools and a revoked one 401s.
 """
 
 from __future__ import annotations
@@ -14,16 +18,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests._authhelp import (
     CLAUDE_REDIRECT,
-    bearer,
     extract_approval,
     pkce_pair,
     session_cookies,
 )
 from tests._factories import make_user
+from tests.mcp._mcphelp import rpc
 
 
 async def test_full_oauth_connector_flow(
-    unauth_client: AsyncClient, db_session: AsyncSession
+    unauth_client: AsyncClient, mcp_http: AsyncClient, db_session: AsyncSession
 ) -> None:
     # 1. Discovery
     as_meta = (await unauth_client.get("/.well-known/oauth-authorization-server")).json()
@@ -93,10 +97,10 @@ async def test_full_oauth_connector_flow(
     assert tokens["token_type"] == "Bearer"
     access_token, refresh_token = tokens["access_token"], tokens["refresh_token"]
 
-    # 6. Call the protected resource with the access token
-    mcp = await unauth_client.get("/mcp", headers=bearer(access_token))
+    # 6. Call the protected MCP resource with the access token (real tools/list).
+    mcp = await rpc(mcp_http, "tools/list", token=access_token)
     assert mcp.status_code == 200
-    assert mcp.json()["user_id"] == str(user.id)
+    assert {t["name"] for t in mcp.json()["result"]["tools"]}  # a non-empty tool surface
 
     # 7. Refresh → rotation (new refresh + access)
     refreshed = await unauth_client.post(
@@ -113,7 +117,7 @@ async def test_full_oauth_connector_flow(
     assert rotated["access_token"] != access_token
 
     # The rotated access token works against /mcp (refresh without re-auth).
-    mcp_after_refresh = await unauth_client.get("/mcp", headers=bearer(rotated["access_token"]))
+    mcp_after_refresh = await rpc(mcp_http, "tools/list", token=rotated["access_token"])
     assert mcp_after_refresh.status_code == 200
 
     # 8. Reuse the OLD refresh token → theft response: invalid_grant + chain revocation
@@ -140,5 +144,5 @@ async def test_full_oauth_connector_flow(
     assert dead_refresh.status_code == 400
 
     # …and the rotated access token was revoked too → /mcp now 401.
-    mcp_revoked = await unauth_client.get("/mcp", headers=bearer(rotated["access_token"]))
+    mcp_revoked = await rpc(mcp_http, "tools/list", token=rotated["access_token"])
     assert mcp_revoked.status_code == 401

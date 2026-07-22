@@ -275,7 +275,65 @@ Not required for Phase 0. Track here so they don't become surprise blockers:
   `services/` brain) in `01`. New deps: **none in `apps/api`** — OpenAI + Blob use the existing
   `httpx`; `scripts/` declares its own (incl. `fastapi`, pulled in transitively by the services
   it calls). `gpt-image-2` pinned as the model default (D8).
-## Phase 5 — MCP server (Python) + connector verification — NOT STARTED
+## Phase 5 — MCP server (Python) + connector verification — IN PROGRESS (built + self-verified; **live claude.ai connector handshake outstanding — gated on deploy + Google client**)
+- **Branch/PR:** `phase-5-mcp-server` (cut from `phase-4-catalog-images` HEAD, since Phase 4 is
+  not yet merged to `main`; committed locally, push + PR pending human go-ahead).
+- **⚠️ Gate not fully satisfied:** the phase gate is **standard review + a live connector test**.
+  The code + automated tests (incl. the MCP↔REST contract suite) are complete and green, and the
+  real endpoint is verified over the wire and under a live uvicorn boot; the **live claude.ai
+  handshake + the five `04` verification prompts** need a public deploy (Phase 10) and a real
+  Google OIDC client (the same external prereqs Phase 3's live handshake waits on).
+- **Scope (shipped):**
+  - **The MCP server** (`app/mcp/server.py`) — official Python SDK (`mcp` 1.28), `FastMCP`,
+    **stateless Streamable-HTTP + JSON responses**. All **15 tools** from the `04` table
+    registered, each a ~10-line adapter that calls **the same `services/` function REST calls**
+    and returns **the same Pydantic schema** (`search_exercises`, `get_exercise`,
+    `create_custom_exercise`, `log_session`, `list_sessions`, `get_session`, `get_session_sets`,
+    `log_set`, `get_prs`, `get_pr_history`, `get_volume_summary`, `get_session_frequency`,
+    `get_skill_overview`, `get_skill_detail`, `update_skill_progress`) + the **`tempo://guide`**
+    resource (`app/mcp/guide.py`).
+  - **OAuth-protected mount** (`app/mcp/asgi.py`): a bearer-auth ASGI wrapper reusing
+    `services/oauth.resolve_access_token` (REST's exact auth path) — unauthenticated/invalid/
+    expired → **401 + RFC 9728 `WWW-Authenticate` PRM pointer**; a token missing the baseline
+    `workouts.read` scope → 403; write tools additionally enforce `workouts.write`. Attached as a
+    Starlette **`Route("/mcp")`** (exact path, no redirect); the session-manager **lifespan** is
+    wired into `create_app()`. DNS-rebinding Host/Origin allowlist on, from settings.
+  - **Request runtime** (`app/mcp/runtime.py`): the resolved principal (contextvar) + an
+    injectable DB-session source; **no business logic outside `services/`** (architecture guard
+    extended coverage passes over `app/mcp`). New `core/db.session_scope()` keeps commit/rollback
+    out of the adapters.
+  - **Exercise chat-identity rule** (D23): new `services/exercises.resolve_ref` (UUID → slug →
+    exact name; global beats custom; tie → candidates), documented in `tempo://guide`.
+  - The Phase-3 `/mcp` **probe** (`app/mcp/probe.py`) is **replaced** by the real mount; its
+    resource-guard coverage moved to the new MCP transport tests (against the real endpoint).
+- **DoD evidence:**
+  - **`pnpm exec turbo run build lint typecheck test` → 7/7 successful** (web cached; api
+    build+lint+typecheck+**test**). API `ruff` + `black --check` clean; `mypy` (strict) clean
+    over **124 files**.
+  - **`uv run pytest -q` → 180 passed** (was 157 → **+23**, net of the removed probe test): a
+    **9-test transport suite** (unauth 401+PRM, invalid 401, insufficient-scope 403, `tools/list`
+    exposes all 15, `resources/read tempo://guide`, catalog search, the **full log-a-workout loop
+    with PR detection over the wire**, write-needs-write-scope, spoofed-Host 421); a **13-test
+    MCP↔REST contract suite** asserting every read tool's output **equals** its REST endpoint and
+    every write round-trips through REST (**anti-drift**); and `resolve_ref` service tests
+    (UUID/slug/name, visibility, global-over-custom, ambiguity→candidates).
+  - **OAuth e2e** (`test_e2e.py`) now drives the **real** MCP server for its `/mcp` steps: a
+    minted access token runs `tools/list`, the rotated token still works (refresh without
+    re-auth), and the revoked token → 401.
+  - **Live uvicorn boot** (dummy DB): lifespan logs *StreamableHTTP session manager started*;
+    `GET /.well-known/oauth-protected-resource` → 200 (`resource` = `…/mcp`); `POST /mcp`
+    unauthenticated → **401** with the full `WWW-Authenticate: Bearer resource_metadata=…,
+    error="invalid_token"` header; clean shutdown (no cancel-scope error).
+- **Outstanding (gated on deploy + real Google client — same prereqs as Phase 3's live test):**
+  - [ ] Deploy `api` so `https://api.tempo.clupai.com/mcp` is reachable; add it as a claude.ai
+        custom connector; confirm the OAuth handshake (discovery → DCR → Google login → token).
+  - [ ] Run the **five `04` verification prompts** end-to-end (search → start session → log sets
+        → read PRs) and confirm data in Neon; confirm an expired token refreshes without re-auth.
+- **Notes / decisions:** logged **D21** (Route + custom bearer wrapper reusing our resolver,
+  principal via contextvar), **D22** (stateless Streamable-HTTP + JSON, Host/Origin allowlist),
+  **D23** (`resolve_ref` chat-identity rule) in `01`. New dep: **`mcp` 1.28** in `apps/api`. New
+  optional env (`MCP_DNS_REBINDING_PROTECTION`, `MCP_ALLOWED_HOSTS`, `MCP_ALLOWED_ORIGINS`) in
+  `.env.example`. **No migration** — Phase 5 adds no schema.
 ## Phase 6 — Slice: Design system + app shell + Library — NOT STARTED
 ## Phase 7 — Slice: Log a workout (UI + MCP parity) — NOT STARTED
 ## Phase 8 — Slice: Dashboard + Skills module — NOT STARTED

@@ -12,6 +12,8 @@ rewrites the scheme to ``postgresql+asyncpg`` and lifts ``sslmode`` into asyncpg
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from functools import lru_cache
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -79,3 +81,24 @@ def get_engine() -> AsyncEngine:
 def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
     """Return the process-wide async session factory (one session per request)."""
     return async_sessionmaker(get_engine(), expire_on_commit=False, autoflush=False)
+
+
+@asynccontextmanager
+async def session_scope() -> AsyncIterator[AsyncSession]:
+    """Yield a session, committing on success and rolling back on error.
+
+    The context-manager twin of the FastAPI ``get_db`` dependency, for callers that live
+    outside the request/DI cycle — chiefly the MCP tools, which run inside the mounted MCP
+    ASGI app rather than through FastAPI's dependency injection. Keeping the commit/rollback
+    here (not in ``app/mcp``) lets the MCP adapters stay pure "call a service" shims, which
+    the architecture guard enforces (docs/03, docs/11).
+    """
+    session = get_sessionmaker()()
+    try:
+        yield session
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
+    finally:
+        await session.close()

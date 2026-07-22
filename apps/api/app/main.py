@@ -29,7 +29,7 @@ from app.auth import routes as auth_routes
 from app.core.config import get_settings
 from app.core.errors import install_error_handlers
 from app.core.logging import configure_logging, get_logger, new_request_id, request_id_ctx
-from app.mcp import probe as mcp_probe
+from app.mcp.asgi import build_mcp_route, mcp_lifespan
 from app.oauth import authorize as oauth_authorize
 from app.oauth import metadata as oauth_metadata
 from app.oauth import register as oauth_register
@@ -37,7 +37,8 @@ from app.oauth import token as oauth_token
 
 __all__ = ["create_app", "app"]
 
-# REST (all under /api); then the auth/OAuth surface + the /mcp guard (root paths).
+# REST (all under /api); then the auth/OAuth surface (root paths). The OAuth-protected
+# ``/mcp`` endpoint is added separately as an ASGI route (see below).
 _ROUTERS = (
     health,
     me,
@@ -52,7 +53,6 @@ _ROUTERS = (
     oauth_register,
     oauth_authorize,
     oauth_token,
-    mcp_probe,
 )
 
 REQUEST_ID_HEADER = "X-Request-ID"
@@ -72,7 +72,9 @@ def create_app() -> FastAPI:
                 "insecure_defaults_in_use", extra={"settings": insecure}
             )
 
-    application = FastAPI(title="Tempo API", version="0.3.0")
+    # ``lifespan`` runs the MCP Streamable-HTTP session manager (its task group backs every
+    # ``/mcp`` request); see app/mcp/asgi.py.
+    application = FastAPI(title="Tempo API", version="0.5.0", lifespan=mcp_lifespan)
 
     application.add_middleware(
         CORSMiddleware,
@@ -109,6 +111,10 @@ def create_app() -> FastAPI:
 
     for module in _ROUTERS:
         application.include_router(module.router)
+
+    # The OAuth-protected MCP endpoint. A Route (not a Mount) serves the exact ``/mcp`` path
+    # with no trailing-slash redirect; the CORS + request-id middleware above still wrap it.
+    application.router.routes.append(build_mcp_route())
 
     return application
 

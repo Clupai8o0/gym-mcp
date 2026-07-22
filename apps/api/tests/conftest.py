@@ -9,6 +9,7 @@ test, keeping tests isolated without re-running migrations.
 
 from __future__ import annotations
 
+import asyncio
 import os
 
 # The app's Settings require the Neon URLs at construction (fail-fast). Router tests
@@ -17,8 +18,13 @@ import os
 # settings load. ``setdefault`` means a real environment (CI/local) still wins.
 os.environ.setdefault("DATABASE_URL", "postgresql://localhost:5432/tempo_unused")
 os.environ.setdefault("DATABASE_URL_UNPOOLED", "postgresql://localhost:5432/tempo_unused")
+# The MCP transport (docs/04) validates the Host header; the ASGI test clients use
+# ``testserver``/``localhost`` — allow them so the Streamable-HTTP endpoint is reachable.
+os.environ.setdefault("MCP_ALLOWED_HOSTS", "testserver,localhost,127.0.0.1")
 
 from collections.abc import AsyncIterator, Iterator  # noqa: E402
+from contextlib import asynccontextmanager  # noqa: E402
+from typing import Any  # noqa: E402
 
 import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402
@@ -120,3 +126,46 @@ async def unauth_client(db_session: AsyncSession) -> AsyncIterator[AsyncClient]:
     async with client:
         yield client
     application.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def mcp_http(db_session: AsyncSession) -> AsyncIterator[AsyncClient]:
+    """A client bound to the app with the MCP Streamable-HTTP session manager **running**.
+
+    The MCP tools/auth resolve their own DB session (not FastAPI's ``get_db``), so we point
+    that at the rolled-back test session. The session manager runs in a **dedicated task** —
+    its ``anyio`` task group must be entered and exited in one task, and pytest-asyncio may
+    run a fixture's setup and teardown in different tasks; this also mirrors production, where
+    the lifespan task owns the group while request tasks call ``handle_request``. A fresh
+    manager is made per test (``run()`` is one-shot per instance).
+    """
+    from app.main import create_app
+    from app.mcp import runtime, server
+
+    @asynccontextmanager
+    async def _factory() -> Any:
+        yield db_session  # no commit/close: the db_session fixture owns the transaction
+
+    runtime.set_session_factory(lambda: _factory())
+    server.reset_session_manager()
+    manager = server.ensure_session_manager()
+
+    ready = asyncio.Event()
+    stop = asyncio.Event()
+
+    async def _run_manager() -> None:
+        async with manager.run():
+            ready.set()
+            await stop.wait()
+
+    manager_task = asyncio.create_task(_run_manager())
+    await ready.wait()
+    try:
+        transport = ASGITransport(app=create_app())
+        async with AsyncClient(transport=transport, base_url="http://localhost") as client:
+            yield client
+    finally:
+        stop.set()
+        await manager_task
+        runtime.reset_session_factory()
+        server.reset_session_manager()

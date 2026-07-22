@@ -20,6 +20,7 @@ required Neon URLs).
 from __future__ import annotations
 
 from functools import lru_cache
+from urllib.parse import urlsplit
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -90,6 +91,15 @@ class Settings(BaseSettings):
     # (a coarse, stateless backstop — see services/oauth.register_client).
     oauth_registration_rate_limit_per_minute: int = 20
 
+    # ── MCP server: Streamable-HTTP DNS-rebinding protection (docs/04) ────────────────
+    # The MCP SDK validates the ``Host`` (and, when present, ``Origin``) header against an
+    # allowlist to blunt DNS-rebinding. The public API host and localhost are always
+    # allowed; add preview/other hosts + browser origins here (comma-separated). Disable
+    # only for a diagnostic — the endpoint is also OAuth-bearer + audience protected.
+    mcp_dns_rebinding_protection: bool = True
+    mcp_allowed_hosts: str = ""
+    mcp_allowed_origins: str = ""
+
     # ── Catalog illustrations: Vercel Blob + OpenAI GPT Image 2 (docs/06) ─────────────
     # Storage for the generated line-art. Empty in dev/tests (the batch job + on-demand
     # endpoint fail fast with a clear message until provisioned — see app/images/).
@@ -123,6 +133,27 @@ class Settings(BaseSettings):
     def mcp_resource(self) -> str:
         """The canonical MCP resource URL that access tokens are audience-bound to."""
         return f"{self.public_base_url}/mcp"
+
+    @property
+    def mcp_allowed_hosts_list(self) -> list[str]:
+        """Host allowlist for the MCP transport (public API host + localhost + extras).
+
+        ``localhost``/``127.0.0.1`` are listed bare and with the ``:*`` port wildcard the
+        SDK understands, so local dev on any port works.
+        """
+        hosts = ["localhost", "127.0.0.1", "localhost:*", "127.0.0.1:*"]
+        public_host = urlsplit(self.public_base_url).netloc
+        if public_host:
+            hosts.append(public_host)
+        hosts.extend(h.strip() for h in self.mcp_allowed_hosts.split(",") if h.strip())
+        return list(dict.fromkeys(hosts))  # de-dupe, preserve order
+
+    @property
+    def mcp_allowed_origins_list(self) -> list[str]:
+        """Origin allowlist for the MCP transport (browser callers): CORS origins + extras."""
+        origins = [*self.cors_allow_origins, self.public_base_url]
+        origins.extend(o.strip() for o in self.mcp_allowed_origins.split(",") if o.strip())
+        return list(dict.fromkeys(origins))
 
     @property
     def cookie_secure(self) -> bool:

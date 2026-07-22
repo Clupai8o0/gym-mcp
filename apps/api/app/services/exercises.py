@@ -87,6 +87,59 @@ async def get(db: AsyncSession, *, user_id: uuid.UUID, exercise_id: uuid.UUID) -
     return exercise
 
 
+async def resolve_ref(db: AsyncSession, *, user_id: uuid.UUID, ref: str) -> Exercise:
+    """Resolve a UUID, slug, or name to one visible exercise (docs/04 chat-identity rule).
+
+    Chat users say names ("bench press"), not UUIDs, so the MCP tools resolve a free-form
+    reference here — never in the adapter. Resolution order: a valid **UUID** → fetch by id;
+    otherwise an exact **slug** (the ref slugified) or exact case-insensitive **name** match,
+    visibility-scoped (global catalog + the user's customs). On a tie, a slug hit beats a
+    name-only hit and a **global** row beats a custom one; a genuine tie at that top tier
+    raises ``conflict`` carrying the candidates so the caller can disambiguate by id.
+    """
+    ref = ref.strip()
+    if not ref:
+        raise errors.validation("An exercise reference cannot be empty")
+
+    try:
+        exercise_id = uuid.UUID(ref)
+    except ValueError:
+        pass
+    else:
+        return await get(db, user_id=user_id, exercise_id=exercise_id)
+
+    key = slugify(ref)
+    rows = (
+        (
+            await db.execute(
+                select(Exercise).where(
+                    _visible_to(user_id),
+                    or_(Exercise.slug == key, func.lower(Exercise.name) == ref.lower()),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not rows:
+        raise errors.not_found(f"No exercise matches '{ref}'")
+
+    # Rank: exact-slug before name-only, global before custom, then by name for stability.
+    def _rank(ex: Exercise) -> tuple[bool, bool, str]:
+        return (ex.slug != key, ex.created_by_user_id is not None, ex.name)
+
+    ranked = sorted(rows, key=_rank)
+    best = ranked[0]
+    top_tier = _rank(best)[:2]
+    tied = [ex for ex in ranked if _rank(ex)[:2] == top_tier]
+    if len(tied) > 1:
+        raise errors.conflict(
+            f"Multiple exercises match '{ref}'; specify one by id",
+            candidates=[{"id": str(ex.id), "name": ex.name, "slug": ex.slug} for ex in tied],
+        )
+    return best
+
+
 async def create_custom(
     db: AsyncSession,
     *,

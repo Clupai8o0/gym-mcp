@@ -90,3 +90,59 @@ async def test_create_custom_rejects_empty_slug(db_session: AsyncSession) -> Non
     with pytest.raises(ServiceError) as exc:
         await exercises.create_custom(db_session, user_id=user.id, name="!!!")
     assert exc.value.kind.value == "validation"
+
+
+# ── resolve_ref: the MCP chat-identity rule (docs/04) ────────────────────────────────
+async def test_resolve_ref_by_uuid_slug_and_name(db_session: AsyncSession) -> None:
+    user = await make_user(db_session)
+    bench = await make_global_exercise(db_session, slug="bench-press", name="Bench Press")
+
+    by_id = await exercises.resolve_ref(db_session, user_id=user.id, ref=str(bench.id))
+    by_slug = await exercises.resolve_ref(db_session, user_id=user.id, ref="bench-press")
+    by_name = await exercises.resolve_ref(db_session, user_id=user.id, ref="bench press")
+    assert by_id.id == by_slug.id == by_name.id == bench.id
+
+
+async def test_resolve_ref_unknown_and_empty(db_session: AsyncSession) -> None:
+    user = await make_user(db_session)
+    with pytest.raises(ServiceError) as missing:
+        await exercises.resolve_ref(db_session, user_id=user.id, ref="does not exist")
+    assert missing.value.kind.value == "not_found"
+
+    with pytest.raises(ServiceError) as empty:
+        await exercises.resolve_ref(db_session, user_id=user.id, ref="   ")
+    assert empty.value.kind.value == "validation"
+
+
+async def test_resolve_ref_scopes_visibility(db_session: AsyncSession) -> None:
+    alice = await make_user(db_session, email="alice@example.com")
+    bob = await make_user(db_session, email="bob@example.com")
+    await make_custom_exercise(db_session, user_id=bob.id, slug="bob-move", name="Bob Move")
+
+    with pytest.raises(ServiceError) as exc:  # Bob's custom is invisible to Alice
+        await exercises.resolve_ref(db_session, user_id=alice.id, ref="Bob Move")
+    assert exc.value.kind.value == "not_found"
+
+
+async def test_resolve_ref_prefers_global_over_custom_shadow(db_session: AsyncSession) -> None:
+    user = await make_user(db_session)
+    global_bench = await make_global_exercise(db_session, slug="bench-press", name="Bench Press")
+    # A custom row sharing the slug (the partial-unique index allows it) must not make it
+    # ambiguous — the global wins.
+    await make_custom_exercise(db_session, user_id=user.id, slug="bench-press", name="Bench Press")
+
+    resolved = await exercises.resolve_ref(db_session, user_id=user.id, ref="bench-press")
+    assert resolved.id == global_bench.id
+
+
+async def test_resolve_ref_ambiguous_returns_candidates(db_session: AsyncSession) -> None:
+    user = await make_user(db_session)
+    # Two distinct globals sharing a name → a genuine tie at the top tier.
+    await make_global_exercise(db_session, slug="pushup-a", name="Push Up")
+    await make_global_exercise(db_session, slug="pushup-b", name="Push Up")
+
+    with pytest.raises(ServiceError) as exc:
+        await exercises.resolve_ref(db_session, user_id=user.id, ref="Push Up")
+    assert exc.value.kind.value == "conflict"
+    assert exc.value.details is not None
+    assert len(exc.value.details["candidates"]) == 2
