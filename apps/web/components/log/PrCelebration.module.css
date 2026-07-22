@@ -1,0 +1,51 @@
+.chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--success-muted);
+  color: var(--success);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.label {
+  font-family: var(--font-mono);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+
+.value {
+  color: var(--text);
+  font-weight: var(--weight-medium);
+}
+
+/* The accent bloom — a single solid pulse behind the chip on the PR moment (no gradient, per the
+ * craft rubric). Transform/opacity only; runs once, then animation-fill leaves it invisible. */
+.bloom {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: var(--radius-full);
+  background: var(--success);
+  animation: pr-bloom var(--dur-slow) var(--ease-out) forwards;
+}
+
+@keyframes pr-bloom {
+  0% {
+    opacity: 0.35;
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.2);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bloom {
+    display: none;
+  }
+}

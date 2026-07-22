@@ -1,0 +1,30 @@
+.starter {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-3);
+  align-items: start;
+}
+
+.input {
+  width: 100%;
+}
+
+.button {
+  min-width: 10rem;
+}
+
+.error {
+  grid-column: 1 / -1;
+  color: var(--danger);
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 560px) {
+  .starter {
+    grid-template-columns: 1fr;
+  }
+
+  .button {
+    width: 100%;
+  }
+}

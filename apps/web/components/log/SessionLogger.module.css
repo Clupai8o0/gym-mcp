@@ -1,0 +1,58 @@
+.logger {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  max-width: 46rem;
+  margin-inline: auto;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.title {
+  margin-top: var(--space-1);
+  font-size: var(--text-3xl);
+}
+
+.sub {
+  margin-top: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.blocks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-10) var(--space-6);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-xl);
+  text-align: center;
+}
+
+.emptyTitle {
+  font-size: var(--text-lg);
+  color: var(--text);
+}
+
+.emptyText {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  max-width: 28rem;
+  margin-inline: auto;
+}
+
+.addBar {
+  display: flex;
+  justify-content: center;
+}

@@ -1,0 +1,51 @@
+.link {
+  display: block;
+}
+
+.card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.main {
+  min-width: 0;
+}
+
+.name {
+  font-size: var(--text-base);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.date {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.meta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+
+.duration {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.chevron {
+  color: var(--text-muted);
+  transition:
+    transform var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+
+.link:hover .chevron {
+  color: var(--accent);
+  transform: translateX(2px);
+}

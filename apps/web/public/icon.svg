@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Tempo">
+  <rect width="512" height="512" rx="112" fill="#0a0a0a"/>
+  <g fill="#ff7a17">
+    <rect x="150" y="240" width="40" height="132" rx="20"/>
+    <rect x="236" y="150" width="40" height="222" rx="20"/>
+    <rect x="322" y="196" width="40" height="176" rx="20"/>
+  </g>
+</svg>

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Geist_Mono } from "next/font/google";
 
+import { ServiceWorkerRegistrar } from "@/components/pwa/ServiceWorkerRegistrar";
 import "./globals.css";
 
 // Inter is the documented open substitute for x.ai's proprietary Universal Sans (DESIGN.md);
@@ -25,6 +26,9 @@ export const metadata: Metadata = {
   },
   description:
     "Personal-first, share-ready workout app — an illustrated gym library, fast logging, and a progress dashboard.",
+  manifest: "/manifest.webmanifest",
+  icons: { icon: "/icon.svg", apple: "/icon.svg" },
+  appleWebApp: { capable: true, title: "Tempo", statusBarStyle: "black-translucent" },
 };
 
 export const viewport: Viewport = {
@@ -39,7 +43,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${inter.variable} ${geistMono.variable}`}>
-      <body>{children}</body>
+      <body>
+        {children}
+        <ServiceWorkerRegistrar />
+      </body>
     </html>
   );
 }

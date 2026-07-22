@@ -1,0 +1,84 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  max-width: 46rem;
+  margin-inline: auto;
+}
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.title {
+  font-size: var(--text-4xl);
+}
+
+.lede {
+  color: var(--text-muted);
+  max-width: 36rem;
+}
+
+.activeArea {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  align-items: flex-start;
+}
+
+.continueLink {
+  display: block;
+  width: 100%;
+}
+
+.continue {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.continueTitle {
+  margin-top: var(--space-1);
+  font-size: var(--text-xl);
+  color: var(--text);
+}
+
+.continueSub {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.continueCta {
+  color: var(--accent);
+  font-size: var(--text-base);
+  white-space: nowrap;
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
+.continueLink:hover .continueCta {
+  transform: translateX(2px);
+}
+
+.starterCard {
+  display: block;
+}
+
+.recent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.recentHeading {
+  font-size: var(--text-lg);
+  color: var(--text-secondary);
+}
+
+.recentList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}

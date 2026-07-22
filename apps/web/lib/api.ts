@@ -11,7 +11,15 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 
 import { API_URL, CLIENT_HEADER } from "./env";
-import type { Exercise, ExerciseDetail, ExerciseList, Me, PrList } from "./types";
+import type {
+  Exercise,
+  ExerciseDetail,
+  ExerciseList,
+  Me,
+  PrList,
+  SessionDetail,
+  SessionList,
+} from "./types";
 
 export { API_URL };
 
@@ -104,6 +112,21 @@ export async function getExerciseBySlug(slug: string): Promise<ExerciseDetail | 
 /** The user's personal records for one exercise (empty list if none). */
 export async function listPrsForExercise(exerciseId: string): Promise<PrList> {
   return getJson<PrList>(`/api/prs?exercise_id=${encodeURIComponent(exerciseId)}`);
+}
+
+/** Recent workout sessions, newest first (docs/07 §Log — the `/log` home list). */
+export async function listSessions(limit = 20, offset = 0): Promise<SessionList> {
+  return getJson<SessionList>(`/api/sessions?limit=${limit}&offset=${offset}`);
+}
+
+/** One session with its sets grouped by exercise, or `null` if not found / not the user's. */
+export async function getSession(sessionId: string): Promise<SessionDetail | null> {
+  const response = await apiFetch(`/api/sessions/${encodeURIComponent(sessionId)}`);
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    throw new ApiError(response.status, `GET session → ${response.status}`);
+  }
+  return (await response.json()) as SessionDetail;
 }
 
 export type { Exercise };

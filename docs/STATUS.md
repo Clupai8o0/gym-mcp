@@ -394,7 +394,71 @@ Not required for Phase 0. Track here so they don't become surprise blockers:
   deps: **`motion`** (interruptible primitives), **`openapi-typescript`** (dev, type-gen). Enabled
   `experimental.viewTransition` + Blob `images.remotePatterns` in `next.config.ts`. Uses the
   existing `NEXT_PUBLIC_API_URL` / `API_INTERNAL_URL` env (already in `.env.example`).
-## Phase 7 — Slice: Log a workout (UI + MCP parity) — NOT STARTED
+## Phase 7 — Slice: Log a workout (UI + MCP parity) — IN PROGRESS (built + self-verified; **Antigravity frontend-review gate + live authed render outstanding**)
+- **Branch/PR:** `phase-7-log-workout` (cut from `phase-6-design-library` HEAD, since Phase 6 is
+  not yet merged to `main`; committed locally, push + PR pending human go-ahead).
+- **⚠️ Gate not yet satisfied:** this phase's gate is the **Antigravity frontend review** (docs/08
+  rubric). The code is complete, builds, lints, and typechecks; the **Antigravity pass** and a
+  **live render of the authenticated Log flow against a seeded Neon DB + real Google session** wait
+  on the same external prereqs as Phases 3–6 (Neon provisioning, Google OIDC client) — the app is
+  verified against the real API contract, not yet a live logged-in session.
+- **No backend change:** every surface the Log slice needs (`POST/GET /api/sessions`,
+  `GET /api/sessions/{id}` detail-with-sets, `POST /api/sessions/{id}/sets` → `LoggedSetOut` with
+  the PR verdict, `PATCH/DELETE /api/sets/{id}`, `GET /api/exercises`) shipped in Phases 2/5, and
+  the **MCP↔REST contract suite + full log-a-workout-over-the-wire test** shipped in Phase 5 already
+  prove chat parity. Phase 7 is a pure frontend slice (D26).
+- **Scope (shipped):**
+  - **Log home (`/log`):** server-rendered — lists recent sessions; surfaces today's session as a
+    prominent **Continue** card (or a `SessionStarter` when none). `?exercise=<slug>` (from the
+    Library "Log this") is threaded through so the movement is pre-added on arrival.
+  - **Active-session surface (`/log/[sessionId]`):** the `SessionLogger` (client) seeds its view
+    model from the server `SessionDetail`, then evolves it with **optimistic** writes:
+    `ExercisePicker` (debounced catalog search in a `Sheet`), `ExerciseBlock` per movement, and the
+    **`SetEntryPad`** (big one-handed numeric entry via `NumberField`, reps/hold mode, opt-in RPE,
+    **previous set pre-fills the next**). Deep-link `?add=<slug>` pre-adds an exercise.
+  - **PR celebration (signature moment, docs/08):** on a set that sets a record, `PrCelebration`
+    plays an accent bloom + `CountUp` of the new value on the set row — <500ms, spring, and skippable
+    under reduced motion (gradient-free bloom per the craft rubric).
+  - **Rest timer** (nice-to-have): compact `RestTimer` starts on each set save, +30s / skip,
+    slides up via `motion`, reduced-motion cross-fade.
+  - **Offline-first logging (PWA, D27):** `lib/offline` — an IndexedDB write-queue keyed by the
+    optimistic row's client id; when a `log_set` can't reach the API it's queued and the row shows
+    **Queued**, then flushed on the `online` event, reconciling the server's PR verdict back into
+    the row (`useOfflineQueue`, connectivity via `useSyncExternalStore`). `SyncStatus` surfaces
+    offline/pending state. A **minimal service worker** (`public/sw.js`) makes the app installable
+    + serves the offline shell (never touches the API origin); `manifest.webmanifest` + a token-
+    colored `icon.svg` added. Install polish + real PNG icons are deferred to Phase 9 (per docs/10).
+  - **Browser mutation client (`lib/client.ts`, D26):** typed off the generated OpenAPI schema
+    (`createSession`/`logSet`/`updateSet`/`deleteSet`/`searchExercises`/`getExerciseBySlug`), with
+    `credentials:'include'` + the `X-Tempo-Client` CSRF header; `NetworkError` vs `ClientApiError`
+    split drives queue-vs-surface-error. Server reads (`listSessions`/`getSession`) added to
+    `lib/api.ts`. Log-specific view model in `components/log/types.ts`; `lib/format` gained
+    relative-date/duration/clock/set-summary helpers.
+  - States: loading (`[sessionId]/loading.tsx` skeleton), not-found (`[sessionId]/not-found.tsx`,
+    auth-scoped), empty (no exercises / no results), error (per-set `Retry`), placeholder — all
+    present. Tokens-only styling; every animation composed from `components/motion` + tokens.
+- **DoD evidence:**
+  - **`pnpm --filter @tempo/web run build lint typecheck` → all green.** `next build` compiles +
+    typechecks; `/log` + `/log/[sessionId]` correctly **dynamic** (session-gated), `/` still static.
+    ESLint (incl. the React-19 `react-hooks/*` purity + set-state-in-effect rules) + `tsc --noEmit`
+    clean. No `any` at the API boundary (types from `lib/api-types`).
+  - **API unchanged + still green:** `uv run pytest -q` → **184 passed** (no backend edits this
+    phase); the Phase 5 MCP↔REST contract suite + `test_mcp_transport`'s full log-a-workout loop
+    remain the parity evidence (a set logged from the UI hits the same `sessions`/`sets` services
+    a chat `log_session`/`log_set` does).
+- **Outstanding (gated on external prereqs — Neon DB + Google OIDC client, same as Phases 3–6):**
+  - [ ] **Antigravity frontend-review** pass against `apps/web/FRONTEND_REVIEW.md` (docs/08 gate) —
+        incl. the Phase-7 signature moment (PR celebration <500ms).
+  - [ ] Live authed render: start a session, add exercises, log sets (optimistic + PR feedback)
+        against a **seeded Neon catalog** + real Google session; confirm the same workout logged via
+        the claude.ai MCP connector lands identically in Neon.
+  - [ ] Offline demo: log sets with the network off → **Queued**, then reconnect → synced with PR
+        verdicts (the IndexedDB queue is unit-shaped but the live round-trip needs the deployed API).
+  - [ ] Lighthouse/CWV budget check (LCP<2.5s, CLS<0.1, INP<200ms) on the deployed preview.
+- **Notes / decisions:** logged **D26** (browser mutation client + no new backend; API is the single
+  write path) and **D27** (app-managed IndexedDB offline queue; minimal SW; install polish → Phase 9)
+  in `01`. New web dep: **none** (uses the existing `motion` + generated types). No new env, no
+  migration, no `.env.example` change. Added `manifest.webmanifest`, `public/sw.js`, `public/icon.svg`.
 ## Phase 8 — Slice: Dashboard + Skills module — NOT STARTED
 ## Phase 9 — Flagship polish pass — NOT STARTED
 ## Phase 10 — Deploy & launch — NOT STARTED
