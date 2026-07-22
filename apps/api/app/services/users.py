@@ -1,9 +1,9 @@
-"""User lookups + the Phase 2 development-user stub.
+"""User lookups + a development-account helper.
 
-Until real Google OIDC login lands (Phase 3), ``current_user`` resolves to a single
-fixed development account. :func:`ensure_dev_user` provisions it idempotently so that
-FK-bearing writes (sessions, sets) work against a real ``users`` row. Phase 3 replaces
-the stub with session/bearer resolution and removes this shortcut.
+Real request auth is Google OIDC (session cookie) or an OAuth bearer token as of Phase 3 —
+``api.deps.current_user`` no longer uses the stub. :func:`ensure_dev_user` survives only as a
+**test/local-dev convenience** (idempotently provisioning a real ``users`` row so FK-bearing
+writes work); it is not wired into any production code path.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ DEV_NAME = "Dev User"
 
 
 async def ensure_dev_user(db: AsyncSession) -> User:
-    """Return the singleton dev user, creating it on first use (race-safe upsert)."""
+    """Return the singleton dev/test user, creating it on first use (race-safe upsert)."""
     await db.execute(
         pg_insert(User)
         .values(email=DEV_EMAIL, google_sub=DEV_GOOGLE_SUB, name=DEV_NAME)

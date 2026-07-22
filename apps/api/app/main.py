@@ -1,9 +1,9 @@
 """FastAPI application factory (docs/03-backend-fastapi.md).
 
-``create_app()`` assembles the REST surface: structured logging, a request-id middleware,
-same-site CORS, the domain→HTTP error handlers, and every router — each a thin adapter over
-``app/services``. The MCP mount and the OAuth AS arrive in later phases; auth is stubbed here
-(``api/deps.current_user`` resolves to a fixed dev user) so features work before real login.
+``create_app()`` assembles the full surface: structured logging, a request-id middleware,
+same-site CORS, the domain→HTTP error handlers, and every router. Phase 3 adds the auth/OAuth
+routers (Google login, the OAuth 2.1 AS discovery/register/authorize/token endpoints) and the
+OAuth-protected ``/mcp`` guard. Business logic stays in ``app/services``; routers are thin.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import RequestResponseEndpoint
 
+from app.api.deps import CLIENT_HEADER
 from app.api.routers import (
     analytics,
     exercises,
@@ -24,16 +25,36 @@ from app.api.routers import (
     sets,
     skills,
 )
+from app.auth import routes as auth_routes
 from app.core.config import get_settings
 from app.core.errors import install_error_handlers
 from app.core.logging import configure_logging, get_logger, new_request_id, request_id_ctx
+from app.mcp import probe as mcp_probe
+from app.oauth import authorize as oauth_authorize
+from app.oauth import metadata as oauth_metadata
+from app.oauth import register as oauth_register
+from app.oauth import token as oauth_token
 
 __all__ = ["create_app", "app"]
 
-_ROUTERS = (health, me, exercises, sessions, sets, prs, skills, analytics)
+# REST (all under /api); then the auth/OAuth surface + the /mcp guard (root paths).
+_ROUTERS = (
+    health,
+    me,
+    exercises,
+    sessions,
+    sets,
+    prs,
+    skills,
+    analytics,
+    auth_routes,
+    oauth_metadata,
+    oauth_register,
+    oauth_authorize,
+    oauth_token,
+    mcp_probe,
+)
 
-# Header carried by browser calls (CORS-exposed); also used as the CSRF signal in Phase 3.
-CLIENT_HEADER = "X-Tempo-Client"
 REQUEST_ID_HEADER = "X-Request-ID"
 
 
@@ -43,7 +64,15 @@ def create_app() -> FastAPI:
     configure_logging(settings.log_level)
     logger = get_logger("tempo.request")
 
-    application = FastAPI(title="Tempo API", version="0.2.0")
+    # Fail loud (not fatal) if a production-like deploy is still on insecure dev secrets.
+    if settings.cookie_secure:
+        insecure = settings.insecure_defaults_in_use()
+        if insecure:
+            get_logger("tempo.startup").warning(
+                "insecure_defaults_in_use", extra={"settings": insecure}
+            )
+
+    application = FastAPI(title="Tempo API", version="0.3.0")
 
     application.add_middleware(
         CORSMiddleware,

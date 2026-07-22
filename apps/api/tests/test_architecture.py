@@ -10,9 +10,13 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-_ROUTERS_DIR = Path(__file__).resolve().parent.parent / "app" / "api" / "routers"
+_APP_DIR = Path(__file__).resolve().parent.parent / "app"
+_ROUTERS_DIR = _APP_DIR / "api" / "routers"
+# The Phase 3 adapter packages (auth/OAuth/MCP) are held to the same rule as routers:
+# thin adapters that call services — never build queries or touch the DB directly.
+_ADAPTER_DIRS = (_APP_DIR / "auth", _APP_DIR / "oauth", _APP_DIR / "mcp")
 
-# Patterns that signal a router is doing the DB's / a service's job.
+# Patterns that signal an adapter is doing the DB's / a service's job.
 _FORBIDDEN = {
     "sqlalchemy core import": re.compile(r"^from sqlalchemy import ", re.MULTILINE),
     "bare sqlalchemy import": re.compile(r"^import sqlalchemy\b", re.MULTILINE),
@@ -24,19 +28,33 @@ _FORBIDDEN = {
 }
 
 
-def _router_files() -> list[Path]:
-    return [p for p in _ROUTERS_DIR.glob("*.py") if p.name != "__init__.py"]
+def _py_files(directory: Path) -> list[Path]:
+    return [p for p in directory.glob("*.py") if p.name != "__init__.py"]
 
 
-def test_routers_exist() -> None:
-    assert _router_files(), "expected router modules under app/api/routers"
-
-
-def test_no_db_access_in_routers() -> None:
+def _scan(directory: Path) -> list[str]:
     offenders: list[str] = []
-    for path in _router_files():
+    for path in _py_files(directory):
         source = path.read_text()
         for label, pattern in _FORBIDDEN.items():
             if pattern.search(source):
-                offenders.append(f"{path.name}: {label}")
+                offenders.append(f"{path.relative_to(_APP_DIR)}: {label}")
+    return offenders
+
+
+def test_routers_exist() -> None:
+    assert _py_files(_ROUTERS_DIR), "expected router modules under app/api/routers"
+
+
+def test_no_db_access_in_routers() -> None:
+    offenders = _scan(_ROUTERS_DIR)
     assert not offenders, "business logic / DB access leaked into routers:\n" + "\n".join(offenders)
+
+
+def test_no_db_access_in_auth_oauth_adapters() -> None:
+    offenders: list[str] = []
+    for directory in _ADAPTER_DIRS:
+        offenders.extend(_scan(directory))
+    assert not offenders, "DB access leaked into an auth/OAuth/MCP adapter:\n" + "\n".join(
+        offenders
+    )

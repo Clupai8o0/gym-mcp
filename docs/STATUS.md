@@ -17,6 +17,10 @@ Not required for Phase 0. Track here so they don't become surprise blockers:
       Neon project and setting `DATABASE_URL`/`DATABASE_URL_UNPOOLED` is the one remaining step** —
       then `pnpm --filter @tempo/api migrate` applies `head` to the Neon branch.
 - [ ] Google OAuth client (OIDC) + authorized redirect URI — **Phase 3**
+      ⤷ the full auth/OAuth stack is **built and verified** (Google calls stubbed in tests);
+      **provisioning a real Google OIDC client and setting `GOOGLE_CLIENT_ID/SECRET` +
+      `SESSION_SIGNING_KEY`/`TOKEN_HASH_PEPPER`** is the remaining external step before the
+      **live claude.ai handshake** + the **human security sign-off** can be recorded.
 - [ ] Vercel Blob store (`BLOB_READ_WRITE_TOKEN`) — **Phase 4**
 - [ ] OpenAI API key + GPT Image 2 access — **Phase 4**
 - [ ] Domain / DNS for `tempo.clupai.com` + `api.tempo.clupai.com`; two Vercel projects — **Phase 10**
@@ -136,7 +140,73 @@ Not required for Phase 0. Track here so they don't become surprise blockers:
     unaffected (its `postgres/postgres` default already matched the harness fallback).
   - New env: `CORS_EXTRA_ORIGINS`, `LOG_LEVEL` (both optional) added to `.env.example`. No
     Decision-Log change — Phase 2 implements D2/D3/D11, it doesn't alter them.
-## Phase 3 — Identity + OAuth 2.1 AS 🔒 — NOT STARTED
+## Phase 3 — Identity + OAuth 2.1 AS 🔒 — IN PROGRESS (built + self-verified; **awaiting human security sign-off**)
+- **Branch/PR:** `phase-3-oauth` (cut from `phase-2-services-rest` HEAD, since Phase 2 is not
+  yet merged to `main`; committed locally, push + PR pending human go-ahead).
+- **⚠️ Gate not yet satisfied:** this phase's DoD requires a **mandatory human security
+  review** (`11`) and a **live claude.ai connector handshake**. The code + automated tests are
+  complete and green; the human sign-off and live handshake are **outstanding** and block DONE.
+- **Scope (shipped):**
+  - **Web login (Google OIDC)** in `app/auth/`: `google.py` (build auth URL, code exchange,
+    **full ID-token verification** — RS256/JWKS signature + `iss`/`aud`/`exp`/`nonce`/
+    `email_verified`), `session.py` (stateless HMAC-signed httpOnly session cookie + the
+    short-lived OIDC-transaction cookie), `routes.py` (`/oauth/login/google`,
+    `/oauth/callback/google`, `/oauth/logout`).
+  - **OAuth 2.1 AS** in `app/oauth/`: RFC 8414 + RFC 9728 well-knowns; RFC 7591 DCR
+    (`/oauth/register`); authorize + consent (`/oauth/authorize`, `/oauth/authorize/consent`)
+    with PKCE + a signed-consent CSRF token; token endpoint (`/oauth/token`) for
+    `authorization_code` + `refresh_token`; resource-server helpers.
+  - **Core AS logic** in `services/oauth.py` (framework-free) + **identity** in `services/auth.py`.
+  - **`core/security.py`** — the audited crypto: opaque 256-bit tokens, HMAC-SHA256 at-rest
+    hashing (peppered), PKCE S256 verify, signed/`typ`-separated payloads.
+  - **Real `current_user`** (bearer **or** session; 401 otherwise) + **CSRF** enforcement on
+    cookie-authenticated mutations (`X-Tempo-Client`) replacing the Phase-2 stub.
+  - **OAuth-protected `/mcp` guard** (`app/mcp/probe.py`) — 401 + RFC 9728 `WWW-Authenticate`
+    PRM pointer when unauthenticated; Phase 5 swaps in the real MCP mount behind it.
+  - **Migration `0003_oauth`** — the four AS tables (all credential columns hashed).
+- **DoD evidence:**
+  - **`pnpm exec turbo run build lint typecheck test --filter=@tempo/api` → 4/4 successful.**
+    `ruff` + `black --check` clean; `mypy` (strict) clean over **101 files**.
+  - **`uv run pytest -q` → 120 passed** (was 70). New: the **full OAuth e2e** (discovery →
+    DCR → authorize → consent → token(PKCE) → call `/mcp` → refresh(rotation) → **reuse → chain
+    revocation**); **service-level AS tests** (single-use codes, PKCE reject, expiry, audience
+    binding, rotation, reuse→chain revoke); **security-primitive units** (hashing, PKCE,
+    signed-payload tamper/expiry/domain-separation); **Google login** (stubbed) incl. state/
+    nonce validation; **session + CSRF** boundary; **metadata**, **DCR**, **authorize**, and
+    **resource-guard** HTTP tests. Architecture guard extended to the auth/OAuth/MCP adapters.
+  - **Migration:** `alembic upgrade head` builds all 4 oauth tables; `alembic check` → **no
+    drift** vs `app/models/oauth.py`; `downgrade base` → 0 tables left; re-`upgrade` repeatable.
+  - **Well-knowns** serve spec-conformant JSON (`code_challenge_methods_supported:["S256"]`,
+    `token_endpoint_auth_methods_supported:["none"]`, issuer = endpoints' base); `/mcp` 401
+    carries the PRM pointer.
+
+### Security checklist (`05`) — self-assessed; **HUMAN SIGN-OFF PENDING**
+> Each box is implemented + test-backed, but per `11` these are **not** satisfied until a
+> **human** reviews `docs/05` line-by-line and records sign-off in the PR. Do **not** deploy
+> to production before then.
+- [x] **PKCE S256 mandatory**; `plain` rejected; advertised in metadata — `security.verify_pkce_s256`, `oauth.build_authorization_request`; `test_security_primitives`, `test_oauth_service`.
+- [x] Auth codes single-use (atomic guarded consume), hashed, ≤60s TTL, bound to client+redirect+PKCE+resource — `oauth.exchange_authorization_code`; `test_oauth_service`, `test_e2e`.
+- [x] `redirect_uri` **exact-match** (no substring/open-redirect) — `oauth.build_authorization_request`; `test_authorize_flow`, `test_oauth_service`.
+- [x] Access & refresh tokens opaque ≥256-bit, stored only as SHA-256(HMAC) hashes — `security.generate_opaque_token`/`hash_token`, `models/oauth.py`.
+- [x] Refresh **rotation** + reuse detection → **chain revocation** (+ live access tokens) — `oauth.refresh_access_token`/`_revoke_chain`; `test_oauth_service`, `test_e2e`.
+- [x] Tokens **audience/resource-bound**; resource server checks it — `oauth.resolve_access_token`; `test_oauth_service::test_resolve_rejects_wrong_audience`.
+- [x] `state`+`nonce` validated on Google flow **and** signed-request on the AS flow — `auth/routes.py`, `oauth/authorize.py`; `test_login`, `test_authorize_flow`.
+- [x] HTTPS-only + cookies `Secure`+`httpOnly`+`SameSite=Lax`+parent-`Domain` — `auth/session.py`, `config.cookie_secure` (Secure auto-on for https origins).
+- [x] Cookie-authed mutations CSRF-protected (custom-header-forces-preflight); CORS explicit allowlist, never `*` — `deps.current_user`, `main.py`; `test_session_and_csrf`.
+- [x] `/oauth/register` rate-limited; redirect_uris https-validated; registrations logged — `oauth.register_client`; `test_register_endpoint`, `test_oauth_service`.
+- [x] Consent shown + recorded per client — `oauth/authorize.py` (structured log; D15); `test_authorize_flow`.
+- [x] No secrets/tokens in logs (hashes/ids only) — `core/logging.py` note; services log ids/prefixes.
+- [x] Google ID token fully verified (iss/aud/exp/signature via JWKS/nonce) — `auth/google.py`.
+- [x] Clock-skew tolerance small + explicit; expiries enforced server-side — `security` (60s skew), `google` (30s leeway).
+- [x] Revoked/expired token path tested (401 → client refresh) — `test_oauth_service`, `test_resource_guard`, `test_e2e`.
+- [ ] **Human security review complete + signed off in the PR** — *OUTSTANDING (gate).*
+- [ ] **claude.ai adds the connector via the live handshake + calls a tool** — *OUTSTANDING (needs real Google client + deploy).*
+
+- **Notes / decisions:** logged **D13–D17** in `01` (stateless session cookie; peppered token
+  hashing; consent-logged-not-tabled; the two additive token columns `resource`+`chain_id`;
+  authlib for JOSE). New deps: `authlib`, `httpx`, `python-multipart`. New env in
+  `.env.example` (issuer/cookie/secret/Google/redirect-allowlist + optional TTL tunables).
+  **`ensure_dev_user` is now a test-only helper** (no longer any production auth path).
 ## Phase 4 — Catalog import + illustration pipeline — NOT STARTED
 ## Phase 5 — MCP server (Python) + connector verification — NOT STARTED
 ## Phase 6 — Slice: Design system + app shell + Library — NOT STARTED

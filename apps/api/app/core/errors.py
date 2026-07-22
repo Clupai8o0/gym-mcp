@@ -24,6 +24,7 @@ logger = get_logger("tempo.errors")
 class ErrorKind(StrEnum):
     """Domain error categories; each maps to one HTTP status."""
 
+    UNAUTHORIZED = "unauthorized"
     NOT_FOUND = "not_found"
     FORBIDDEN = "forbidden"
     CONFLICT = "conflict"
@@ -31,6 +32,7 @@ class ErrorKind(StrEnum):
 
 
 STATUS_BY_KIND: dict[ErrorKind, int] = {
+    ErrorKind.UNAUTHORIZED: 401,
     ErrorKind.NOT_FOUND: 404,
     ErrorKind.FORBIDDEN: 403,
     ErrorKind.CONFLICT: 409,
@@ -53,6 +55,10 @@ class ServiceError(Exception):
 
 
 # Terse constructors for service code: ``raise errors.not_found("session")``.
+def unauthorized(message: str, **details: Any) -> ServiceError:
+    return ServiceError(ErrorKind.UNAUTHORIZED, message, details=details or None)
+
+
 def not_found(message: str, **details: Any) -> ServiceError:
     return ServiceError(ErrorKind.NOT_FOUND, message, details=details or None)
 

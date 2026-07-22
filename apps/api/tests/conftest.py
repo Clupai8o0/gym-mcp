@@ -69,23 +69,54 @@ async def db_session(_migrated_db: str) -> AsyncIterator[AsyncSession]:
         await engine.dispose()
 
 
-@pytest_asyncio.fixture
-async def app_client(db_session: AsyncSession) -> AsyncIterator[AsyncClient]:
-    """An ``httpx`` client bound to a fresh app whose ``get_db`` is the test session.
-
-    ``current_user`` is left as the real Phase 2 stub, so requests run through
-    ``ensure_dev_user`` against the same rolled-back transaction — exercising the actual
-    auth-stub path. Writes are visible within the test and discarded at teardown.
-    """
+def _client_for(application: object, db_session: AsyncSession) -> AsyncClient:
+    """An ``httpx`` client whose ``get_db`` yields the rolled-back test session."""
     from app.api import deps
-    from app.main import create_app
 
     async def _override_get_db() -> AsyncIterator[AsyncSession]:
         yield db_session  # no commit: the fixture owns the transaction lifecycle
 
+    application.dependency_overrides[deps.get_db] = _override_get_db  # type: ignore[attr-defined]
+    transport = ASGITransport(app=application)  # type: ignore[arg-type]
+    return AsyncClient(transport=transport, base_url="http://testserver")
+
+
+@pytest_asyncio.fixture
+async def app_client(db_session: AsyncSession) -> AsyncIterator[AsyncClient]:
+    """A client authenticated as a fixed test user (``current_user`` overridden).
+
+    Router tests exercise routing/serialization/ownership, not the auth mechanism, so
+    ``current_user`` is overridden to a real, provisioned ``users`` row (via the test-only
+    ``ensure_dev_user`` helper). The real ``current_user`` — session cookie, bearer token,
+    401, CSRF — is exercised by the auth suite through :func:`unauth_client`.
+    """
+    from app.api import deps
+    from app.main import create_app
+    from app.services import users
+
+    async def _override_current_user() -> deps.CurrentUser:
+        user = await users.ensure_dev_user(db_session)
+        return deps.CurrentUser(user_id=user.id, scopes=deps.SESSION_SCOPES, via="session")
+
     application = create_app()
-    application.dependency_overrides[deps.get_db] = _override_get_db
-    transport = ASGITransport(app=application)
-    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+    application.dependency_overrides[deps.current_user] = _override_current_user
+    client = _client_for(application, db_session)
+    async with client:
+        yield client
+    application.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def unauth_client(db_session: AsyncSession) -> AsyncIterator[AsyncClient]:
+    """A client with **only** ``get_db`` overridden — the real ``current_user`` runs.
+
+    Used to test the auth boundary (session/bearer/401/CSRF) and the full OAuth surface,
+    which authenticate via cookies/bearer tokens rather than a dependency override.
+    """
+    from app.main import create_app
+
+    application = create_app()
+    client = _client_for(application, db_session)
+    async with client:
         yield client
     application.dependency_overrides.clear()
