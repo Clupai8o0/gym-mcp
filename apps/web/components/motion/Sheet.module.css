@@ -1,0 +1,39 @@
+.root {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  background-color: var(--overlay);
+}
+
+.panelBottom,
+.panelRight {
+  position: absolute;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-overlay);
+  outline: none;
+  overflow-y: auto;
+}
+
+.panelBottom {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 85dvh;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  padding: var(--space-6);
+}
+
+.panelRight {
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: min(28rem, 92vw);
+  border-radius: var(--radius-xl) 0 0 var(--radius-xl);
+  padding: var(--space-6);
+}

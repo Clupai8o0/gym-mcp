@@ -1,0 +1,144 @@
+/*
+ * Tempo design tokens — the single source of truth for color, space, radius, type, and motion
+ * (docs/08). Everything else references these `var(--token)`s; no component may hardcode a hex,
+ * px, or ms value. Derived from the getdesign `x.ai` system (apps/web/DESIGN.md) and reconciled
+ * with docs/08 (which mandates a theme-aware light variant — see Decision Log D24).
+ *
+ * Dark is the signature and the default (`:root`). A light variant follows the viewer's system
+ * preference. `--font-sans` / `--font-mono` are injected by `next/font` in the root layout.
+ */
+
+:root {
+  /* ── Color — dark (signature) ─────────────────────────────────────────────── */
+  --bg: #0a0a0a; /* canvas */
+  --surface: #191919; /* card fill */
+  --surface-2: #1a1c20; /* hovered/nested surface */
+  --surface-3: #363a3f; /* deepest nested surface */
+  --border: #212327; /* hairline */
+  --border-strong: #363a3f;
+
+  --text: #ffffff; /* ink */
+  --text-secondary: #dadbdf; /* body */
+  --text-muted: #7d8187; /* captions, meta */
+
+  --accent: #ff7a17; /* sunset — the single restrained accent */
+  --accent-hover: #ff8f3d;
+  --accent-contrast: #0a0a0a; /* text/icon on an accent fill */
+  --accent-muted: rgba(255, 122, 23, 0.13); /* tinted accent backgrounds */
+
+  --success: #3ec78a; /* PR / positive */
+  --success-muted: rgba(62, 199, 138, 0.13);
+  --danger: #f2555a;
+  --danger-muted: rgba(242, 85, 90, 0.13);
+
+  /* Translucent-white outline for pills (the x.ai signature interactive border). */
+  --outline: rgba(255, 255, 255, 0.14);
+  --outline-hover: rgba(255, 255, 255, 0.24);
+  --focus-ring: rgba(255, 122, 23, 0.55);
+
+  /* Overlay + the one legitimate elevation (dialogs/sheets over content). */
+  --overlay: rgba(0, 0, 0, 0.62);
+  --shadow-overlay: 0 16px 48px rgba(0, 0, 0, 0.55);
+
+  /* ── Space — 4px base scale ───────────────────────────────────────────────── */
+  --space-0: 0;
+  --space-1: 0.25rem; /* 4 */
+  --space-2: 0.5rem; /* 8 */
+  --space-3: 0.75rem; /* 12 */
+  --space-4: 1rem; /* 16 */
+  --space-5: 1.25rem; /* 20 */
+  --space-6: 1.5rem; /* 24 */
+  --space-8: 2rem; /* 32 */
+  --space-10: 2.5rem; /* 40 */
+  --space-12: 3rem; /* 48 */
+  --space-16: 4rem; /* 64 */
+  --space-20: 5rem; /* 80 */
+  --space-24: 6rem; /* 96 */
+
+  /* ── Radius ───────────────────────────────────────────────────────────────── */
+  --radius-sm: 0.375rem; /* 6 */
+  --radius-md: 0.5rem; /* 8 — card chrome */
+  --radius-lg: 0.75rem; /* 12 */
+  --radius-xl: 1rem; /* 16 */
+  --radius-full: 9999px; /* pills */
+
+  /* ── Type ─────────────────────────────────────────────────────────────────── */
+  --font-sans: var(--font-inter), "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", "Menlo", monospace;
+
+  --text-xs: 0.75rem; /* 12 */
+  --text-sm: 0.875rem; /* 14 */
+  --text-base: 1rem; /* 16 */
+  --text-lg: 1.125rem; /* 18 */
+  --text-xl: 1.25rem; /* 20 */
+  --text-2xl: 1.5rem; /* 24 */
+  --text-3xl: 2rem; /* 32 */
+  --text-4xl: 3rem; /* 48 */
+  --text-5xl: 4.25rem; /* 68 — hero */
+
+  --weight-normal: 400;
+  --weight-medium: 500;
+
+  --leading-tight: 1.08;
+  --leading-snug: 1.28;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.68;
+
+  --tracking-tighter: -0.04em; /* display */
+  --tracking-tight: -0.02em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.1em; /* mono eyebrows */
+
+  /* ── Motion (mirrors design/motion.ts) ────────────────────────────────────── */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --dur-micro: 100ms;
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
+
+  /* ── Layout ───────────────────────────────────────────────────────────────── */
+  --container: 1200px;
+  --nav-height: 3.5rem;
+  color-scheme: dark;
+}
+
+/* Light variant — follows the system unless a future toggle stamps [data-theme]. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #ffffff;
+    --surface: #ffffff;
+    --surface-2: #f6f6f7;
+    --surface-3: #ececed;
+    --border: #e4e4e7;
+    --border-strong: #d4d4d8;
+
+    --text: #0a0a0a;
+    --text-secondary: #3f3f46;
+    --text-muted: #71717a;
+
+    --accent: #d95c0a;
+    --accent-hover: #c2510a;
+    --accent-contrast: #ffffff;
+    --accent-muted: rgba(217, 92, 10, 0.1);
+
+    --success: #16915d;
+    --success-muted: rgba(22, 145, 93, 0.1);
+    --danger: #d33b40;
+    --danger-muted: rgba(211, 59, 64, 0.1);
+
+    --outline: rgba(10, 10, 10, 0.14);
+    --outline-hover: rgba(10, 10, 10, 0.28);
+    --focus-ring: rgba(217, 92, 10, 0.5);
+
+    --overlay: rgba(10, 10, 10, 0.4);
+    --shadow-overlay: 0 16px 48px rgba(10, 10, 10, 0.16);
+    color-scheme: light;
+  }
+}
+
+/* Manual override hooks (used if a theme toggle is added later; harmless until then). */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}

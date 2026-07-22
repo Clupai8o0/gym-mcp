@@ -87,6 +87,28 @@ async def get(db: AsyncSession, *, user_id: uuid.UUID, exercise_id: uuid.UUID) -
     return exercise
 
 
+async def get_by_slug(db: AsyncSession, *, user_id: uuid.UUID, slug: str) -> Exercise:
+    """Fetch one visible exercise by exact ``slug``, or raise ``not_found``.
+
+    The web Library addresses exercises by their url-safe slug (``/library/{slug}``), so the
+    detail page resolves the slug to a row here — never in the router. A user's custom slug can
+    collide with a global one (slugs are unique per owner, not globally); the **global** row
+    wins, matching :func:`resolve_ref`'s global-beats-custom rule.
+    """
+    key = slugify(slug)
+    if not key:
+        raise errors.not_found("Exercise not found")
+    rows = (
+        (await db.execute(select(Exercise).where(Exercise.slug == key, _visible_to(user_id))))
+        .scalars()
+        .all()
+    )
+    if not rows:
+        raise errors.not_found("Exercise not found")
+    # Deterministic on a global/custom slug collision: global (null owner) first.
+    return sorted(rows, key=lambda ex: ex.created_by_user_id is not None)[0]
+
+
 async def resolve_ref(db: AsyncSession, *, user_id: uuid.UUID, ref: str) -> Exercise:
     """Resolve a UUID, slug, or name to one visible exercise (docs/04 chat-identity rule).
 

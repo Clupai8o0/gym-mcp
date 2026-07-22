@@ -1,0 +1,56 @@
+.frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  background-color: var(--surface-2);
+  border-radius: var(--radius-md);
+}
+
+.card {
+  /* grid tile — sizing comes from the grid column */
+}
+
+.detail {
+  max-width: 30rem;
+  border: 1px solid var(--border);
+}
+
+.image {
+  object-fit: contain;
+}
+
+.placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+  background: radial-gradient(circle at center, var(--surface-3) 0%, var(--surface-2) 70%);
+}
+
+.glyph {
+  width: 40%;
+  height: 40%;
+  opacity: 0.7;
+}
+
+.generating .glyph {
+  animation: pulse 1.6s var(--ease-in-out) infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .generating .glyph {
+    animation: none;
+  }
+}

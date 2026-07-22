@@ -25,3 +25,6 @@ CLAUDE.md
 
 # Generated
 next-env.d.ts
+# Generated from the FastAPI OpenAPI schema (see apps/web `gen:api`)
+apps/web/openapi.json
+apps/web/lib/api-types.ts

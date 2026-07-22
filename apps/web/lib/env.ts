@@ -1,0 +1,10 @@
+/**
+ * Client-safe environment constants. Kept separate from `lib/api.ts` (which imports the
+ * server-only `next/headers`) so client components can read the API origin without pulling
+ * server code into the browser bundle. `NEXT_PUBLIC_*` is inlined at build and safe to expose.
+ */
+export const API_URL =
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "http://localhost:8000";
+
+/** Custom header that forces a CORS preflight — the CSRF signal for cookie-authed writes. */
+export const CLIENT_HEADER = "X-Tempo-Client";

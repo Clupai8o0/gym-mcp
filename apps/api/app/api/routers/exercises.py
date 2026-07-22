@@ -59,6 +59,17 @@ async def create_exercise(
     return ExerciseDetailOut.model_validate(exercise)
 
 
+@router.get("/by-slug/{slug}", response_model=ExerciseDetailOut)
+async def get_exercise_by_slug(
+    slug: str,
+    cu: CurrentUser = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ExerciseDetailOut:
+    """Resolve a url-safe slug to its exercise (the web Library's detail-page lookup)."""
+    exercise = await exercises.get_by_slug(db, user_id=cu.user_id, slug=slug)
+    return ExerciseDetailOut.model_validate(exercise)
+
+
 @router.get("/{exercise_id}", response_model=ExerciseDetailOut)
 async def get_exercise(
     exercise_id: uuid.UUID,

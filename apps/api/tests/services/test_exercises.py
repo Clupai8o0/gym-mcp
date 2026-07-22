@@ -92,6 +92,23 @@ async def test_create_custom_rejects_empty_slug(db_session: AsyncSession) -> Non
     assert exc.value.kind.value == "validation"
 
 
+# ── get_by_slug: the web Library's detail-page lookup ────────────────────────────────
+async def test_get_by_slug_prefers_global_over_custom_collision(db_session: AsyncSession) -> None:
+    user = await make_user(db_session)
+    global_row = await make_global_exercise(db_session, slug="dips", name="Dips")
+    await make_custom_exercise(db_session, user_id=user.id, slug="dips", name="My Dips")
+
+    found = await exercises.get_by_slug(db_session, user_id=user.id, slug="dips")
+    assert found.id == global_row.id  # global beats a same-slug custom
+
+
+async def test_get_by_slug_unknown_is_not_found(db_session: AsyncSession) -> None:
+    user = await make_user(db_session)
+    with pytest.raises(ServiceError) as exc:
+        await exercises.get_by_slug(db_session, user_id=user.id, slug="nope")
+    assert exc.value.kind.value == "not_found"
+
+
 # ── resolve_ref: the MCP chat-identity rule (docs/04) ────────────────────────────────
 async def test_resolve_ref_by_uuid_slug_and_name(db_session: AsyncSession) -> None:
     user = await make_user(db_session)

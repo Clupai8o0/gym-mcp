@@ -1,0 +1,67 @@
+.bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.searchRow {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.search {
+  flex: 1;
+  max-width: 28rem;
+}
+
+.inlineSelects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+/* Selects sit inline on desktop; on mobile they move into the Sheet. */
+.mobileFilters {
+  display: none;
+}
+
+.sheetHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-5);
+}
+
+.sheetTitle {
+  font-size: var(--text-xl);
+}
+
+.sheetSelects {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.sheetSelects > * {
+  width: 100%;
+}
+.sheetSelects :global(select) {
+  width: 100%;
+}
+
+.sheetClear {
+  margin-top: var(--space-6);
+}
+
+@media (max-width: 768px) {
+  .inlineSelects {
+    display: none;
+  }
+  .mobileFilters {
+    display: inline-flex;
+  }
+  .search {
+    max-width: none;
+  }
+}

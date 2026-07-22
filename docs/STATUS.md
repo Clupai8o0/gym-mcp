@@ -334,7 +334,66 @@ Not required for Phase 0. Track here so they don't become surprise blockers:
   **D23** (`resolve_ref` chat-identity rule) in `01`. New dep: **`mcp` 1.28** in `apps/api`. New
   optional env (`MCP_DNS_REBINDING_PROTECTION`, `MCP_ALLOWED_HOSTS`, `MCP_ALLOWED_ORIGINS`) in
   `.env.example`. **No migration** — Phase 5 adds no schema.
-## Phase 6 — Slice: Design system + app shell + Library — NOT STARTED
+## Phase 6 — Slice: Design system + app shell + Library — IN PROGRESS (built + self-verified; **Antigravity frontend-review gate + live authed render outstanding**)
+- **Branch/PR:** `phase-6-design-library` (cut from `phase-5-mcp-server` HEAD, since Phase 5 is
+  not yet merged to `main`; committed locally, push + PR pending human go-ahead).
+- **⚠️ Gate not yet satisfied:** this phase's gate is the **Antigravity frontend review** (docs/08
+  rubric). The code is complete, builds, and the design system + marketing shell render correctly
+  (screenshotted); the Antigravity pass and a **live render of the authenticated Library against a
+  seeded Neon DB + real Google session** wait on the same external prereqs as Phases 3–5 (Neon
+  provisioning, Google OIDC client) — the app is verified against the real API contract, not yet a
+  live logged-in session.
+- **Scope (shipped):**
+  - **Design system:** `getdesign x.ai` installed → `apps/web/DESIGN.md` (the x.ai spec). Token
+    layer `design/tokens.css` (color/space/radius/type/motion as CSS custom properties, dark
+    signature + light variant), `design/motion.ts` + `design/easings.ts` (durations/spring/curves
+    mirrored for the `motion` lib), `app/globals.css` (reset + View-Transitions rules + reduced
+    motion). **Tokens-only** styling via CSS Modules — no hardcoded hex/px/ms in components.
+  - **`components/ui/`** wrappers: `Button` (pill, 3 variants + loading/disabled), `Card`, `Input`,
+    `Select`, `Badge` (muscle/equipment/custom tones), `Skeleton`, `EmptyState`, `Spinner` — each
+    with all states + focus-visible + reduced-motion.
+  - **`components/motion/`** primitives: `FadeIn`, `Stagger` (CSS enters), `Pressable`, `Sheet`
+    (`motion` lib, interruptible), `SharedElement` (React `<ViewTransition>` behind a typed,
+    gracefully-degrading wrapper). All reduced-motion aware; used by the Library.
+  - **App shell:** authed `(app)` route-group layout (`requireUser` → redirects to the API's Google
+    login when signed-out; app chrome never renders for signed-out users), sticky anchored header
+    (`AppHeader` + `AppNav` active-state + `UserMenu` sign-out), view-transition wrapper. Signed-out
+    `(marketing)` landing page (hero + feature trio). Placeholder `/log` + `/dashboard` so nav has
+    no dead links (replaced in Phases 7–8).
+  - **Library surface:** grid of `ExerciseCard`s (illustration + name + muscle/equipment tags) with
+    `IllustrationImage` placeholder/generating/ready states (no CLS); `FilterBar` (search debounced,
+    muscle/equipment/category/level) **synced to the URL** (shareable + back-button; mobile filters
+    in a `Sheet`); server-side pagination; detail `[slug]` page (large illustration, ordered
+    instructions, target muscles, the user's PRs, "Log this" affordance) with the **list→detail
+    shared-element morph**; `loading.tsx` + `not-found.tsx`.
+  - **Typed API client:** `lib/api-types.ts` **generated from the FastAPI OpenAPI schema**
+    (`openapi.json` → `openapi-typescript`; `pnpm gen:api`) — **no `any` at the boundary**. Server
+    reads forward the session cookie (`lib/api.ts`); `lib/{auth,format,catalog,cn,env}.ts` helpers.
+  - **Additive API (D25):** `GET /api/exercises/by-slug/{slug}` + `services/exercises.get_by_slug`
+    (slug→exercise stays in `services/`); the only backend change, fully test-backed.
+  - **Antigravity rubric codified** in `apps/web/FRONTEND_REVIEW.md` (docs/08 DoD).
+- **DoD evidence:**
+  - **`pnpm --filter @tempo/web run build lint typecheck` → all green.** `next build` compiles +
+    typechecks; `/` prerenders static, `/library`, `/library/[slug]`, `/log`, `/dashboard`
+    correctly **dynamic** (session-gated). ESLint (incl. `react-hooks/set-state-in-effect`) + `tsc
+    --noEmit` clean.
+  - **API still green with the additive change:** `uv run pytest -q` → **184 passed** (was 180 →
+    **+4**: `get_by_slug` service global-over-custom + not-found, and the `by-slug` router 200/404);
+    `ruff` + `black --check` + `mypy` (strict) clean. Architecture guard + MCP↔REST contract suite
+    unaffected.
+  - **Live render:** `next start` + browser screenshot of `/` confirms the x.ai aesthetic renders —
+    near-black canvas, Inter display with negative tracking, Geist-Mono uppercase eyebrows, accent
+    pill CTA, hairline cards; **no console errors/hydration warnings**.
+- **Outstanding (gated on external prereqs — Neon DB + Google OIDC client, same as Phases 3–5):**
+  - [ ] **Antigravity frontend-review** pass against `apps/web/FRONTEND_REVIEW.md` (docs/08 gate).
+  - [ ] Live render of the authenticated Library against a **seeded Neon catalog** + real Google
+        session (grid, URL-synced filters, list→detail morph, PRs on the detail page).
+  - [ ] Lighthouse/CWV budget check (LCP<2.5s, CLS<0.1, INP<200ms) on the deployed preview.
+- **Notes / decisions:** logged **D24** (getdesign = spec not lib; dark-signature + light variant;
+  CSS-Modules tokens-only; motion split) and **D25** (additive `by-slug` endpoint) in `01`. New web
+  deps: **`motion`** (interruptible primitives), **`openapi-typescript`** (dev, type-gen). Enabled
+  `experimental.viewTransition` + Blob `images.remotePatterns` in `next.config.ts`. Uses the
+  existing `NEXT_PUBLIC_API_URL` / `API_INTERNAL_URL` env (already in `.env.example`).
 ## Phase 7 — Slice: Log a workout (UI + MCP parity) — NOT STARTED
 ## Phase 8 — Slice: Dashboard + Skills module — NOT STARTED
 ## Phase 9 — Flagship polish pass — NOT STARTED

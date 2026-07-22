@@ -1,0 +1,155 @@
+/*
+ * Global stylesheet: design tokens + a minimal base reset + the View-Transitions rules
+ * (docs/08 §Implementation). Component styling lives in colocated `*.module.css` files that
+ * reference the tokens — this file holds only truly-global CSS.
+ */
+@import "../design/tokens.css";
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: var(--weight-normal);
+  line-height: var(--leading-normal);
+  letter-spacing: var(--tracking-tight);
+  min-height: 100dvh;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-weight: var(--weight-normal);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tighter);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+/* Tabular figures for weights/reps/timers everywhere (docs/08 §Typography). */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Uppercase tracked mono eyebrow — the x.ai signature label (DESIGN.md `eyebrow-mono`). */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* Centered page container. */
+.container {
+  width: 100%;
+  max-width: var(--container);
+  margin-inline: auto;
+  padding-inline: var(--space-6);
+}
+
+/* Accessible visually-hidden (labels for icon-only controls). */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* One consistent, always-visible focus ring on keyboard focus (docs/08 a11y). */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ── View Transitions (docs/08 §Implementation) ──────────────────────────────────────
+ * List→detail shared-element morph (Library) is driven by React `<ViewTransition>` with a
+ * matching `name`; here we tune the morph and anchor the persistent chrome. The app shell's
+ * top bar keeps a stable `view-transition-name` so it never slides during navigation. */
+::view-transition-group(*) {
+  animation-duration: var(--dur-slow);
+  animation-timing-function: var(--ease-out);
+}
+
+::view-transition-group(app-header) {
+  animation: none;
+  z-index: 100;
+}
+::view-transition-old(app-header) {
+  display: none;
+}
+::view-transition-new(app-header) {
+  animation: none;
+}
+
+/* Soften the illustration morph mid-flight to hide pixel interpolation. */
+::view-transition-image-pair(.morph) {
+  animation-name: tempo-morph-blur;
+}
+@keyframes tempo-morph-blur {
+  40% {
+    filter: blur(2px);
+  }
+}
+
+/* Reduced motion: swap instantly, never move things across the viewport (docs/08 §7). */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

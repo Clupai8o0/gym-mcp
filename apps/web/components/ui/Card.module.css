@@ -1,0 +1,20 @@
+.card {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+}
+
+.padded {
+  padding: var(--space-6);
+}
+
+.interactive {
+  transition:
+    border-color var(--dur-base) var(--ease-out),
+    background-color var(--dur-base) var(--ease-out);
+}
+.interactive:hover {
+  border-color: var(--border-strong);
+  background-color: var(--surface-2);
+}
