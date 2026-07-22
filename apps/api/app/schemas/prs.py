@@ -25,6 +25,11 @@ class PrOut(BaseModel):
     achieved_at: datetime
     session_id: uuid.UUID | None
     notes: str | None
+    # Exercise art, so the Dashboard can show each record with its illustration (docs/07 §Dashboard)
+    # without an N+1 fetch. Additive; both REST and the MCP ``get_prs`` tool serialize this schema.
+    illustration_url: str | None
+    illustration_status: str
+    is_custom: bool
 
     @classmethod
     def from_pair(cls, row: PrWithExercise) -> PrOut:
@@ -39,6 +44,9 @@ class PrOut(BaseModel):
             achieved_at=row.pr.achieved_at,
             session_id=row.pr.session_id,
             notes=row.pr.notes,
+            illustration_url=row.exercise.illustration_url,
+            illustration_status=row.exercise.illustration_status,
+            is_custom=row.exercise.created_by_user_id is not None,
         )
 
 

@@ -1,0 +1,89 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.totals {
+  display: flex;
+  gap: var(--space-8);
+}
+
+.total {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.totalLabel {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.totalValue {
+  font-size: var(--text-2xl);
+  letter-spacing: var(--tracking-tight);
+}
+
+.totalMuted {
+  color: var(--text-muted);
+  font-size: var(--text-lg);
+}
+
+.strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.cell {
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-3);
+  flex: none;
+}
+
+/* Token-driven intensity: mix the accent into the empty-cell color (theme-aware). */
+.l0 {
+  background-color: var(--surface-3);
+}
+.l1 {
+  background-color: color-mix(in srgb, var(--accent) 30%, var(--surface-3));
+}
+.l2 {
+  background-color: color-mix(in srgb, var(--accent) 55%, var(--surface-3));
+}
+.l3 {
+  background-color: color-mix(in srgb, var(--accent) 78%, var(--surface-3));
+}
+.l4 {
+  background-color: var(--accent);
+}
+
+.axis {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.legend {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.legend .cell {
+  width: 0.8rem;
+  height: 0.8rem;
+}
+
+.legendLabel {
+  margin-inline: var(--space-1);
+}

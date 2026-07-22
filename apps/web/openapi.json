@@ -50,6 +50,45 @@
             }
           }
         }
+      },
+      "patch": {
+        "tags": [
+          "me"
+        ],
+        "summary": "Update Me",
+        "operationId": "update_me_api_me_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MeUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/exercises": {
@@ -1104,6 +1143,69 @@
         }
       }
     },
+    "/api/connections": {
+      "get": {
+        "tags": [
+          "connections"
+        ],
+        "summary": "List Connections",
+        "operationId": "list_connections_api_connections_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionListOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/connections/{client_id}": {
+      "delete": {
+        "tags": [
+          "connections"
+        ],
+        "summary": "Revoke Connection",
+        "operationId": "revoke_connection_api_connections__client_id__delete",
+        "parameters": [
+          {
+            "name": "client_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Client Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevokeConnectionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/oauth/login/google": {
       "get": {
         "tags": [
@@ -1719,6 +1821,84 @@
         "title": "ClientRegistrationRequest",
         "description": "Inbound DCR body. Unknown RFC 7591 metadata fields are ignored, not rejected."
       },
+      "ConnectionListOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectionOut"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "ConnectionListOut"
+      },
+      "ConnectionOut": {
+        "properties": {
+          "client_id": {
+            "type": "string",
+            "title": "Client Id"
+          },
+          "client_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Name"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope"
+          },
+          "connected_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Connected At"
+          },
+          "last_active_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Active At"
+          },
+          "active_token_count": {
+            "type": "integer",
+            "title": "Active Token Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "client_id",
+          "client_name",
+          "scope",
+          "connected_at",
+          "last_active_at",
+          "active_token_count"
+        ],
+        "title": "ConnectionOut",
+        "description": "A connected chat client + the state of the user's grant to it."
+      },
       "ExerciseCreate": {
         "properties": {
           "name": {
@@ -2282,6 +2462,24 @@
         ],
         "title": "MeOut"
       },
+      "MeUpdate": {
+        "properties": {
+          "unit_pref": {
+            "type": "string",
+            "enum": [
+              "kg",
+              "lb"
+            ],
+            "title": "Unit Pref"
+          }
+        },
+        "type": "object",
+        "required": [
+          "unit_pref"
+        ],
+        "title": "MeUpdate",
+        "description": "Patch the current user's display preferences (Settings \u2192 units, docs/07)."
+      },
       "PrHistoryOut": {
         "properties": {
           "exercise_id": {
@@ -2434,6 +2632,25 @@
               }
             ],
             "title": "Notes"
+          },
+          "illustration_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Illustration Url"
+          },
+          "illustration_status": {
+            "type": "string",
+            "title": "Illustration Status"
+          },
+          "is_custom": {
+            "type": "boolean",
+            "title": "Is Custom"
           }
         },
         "type": "object",
@@ -2447,7 +2664,10 @@
           "unit",
           "achieved_at",
           "session_id",
-          "notes"
+          "notes",
+          "illustration_url",
+          "illustration_status",
+          "is_custom"
         ],
         "title": "PrOut"
       },
@@ -2488,6 +2708,30 @@
         ],
         "title": "ProtectedResourceMetadata",
         "description": "RFC 9728 PRM (``/.well-known/oauth-protected-resource``)."
+      },
+      "RevokeConnectionOut": {
+        "properties": {
+          "client_id": {
+            "type": "string",
+            "title": "Client Id"
+          },
+          "revoked_access": {
+            "type": "integer",
+            "title": "Revoked Access"
+          },
+          "revoked_refresh": {
+            "type": "integer",
+            "title": "Revoked Refresh"
+          }
+        },
+        "type": "object",
+        "required": [
+          "client_id",
+          "revoked_access",
+          "revoked_refresh"
+        ],
+        "title": "RevokeConnectionOut",
+        "description": "How many of the user's tokens were revoked for the client."
       },
       "SessionCreate": {
         "properties": {

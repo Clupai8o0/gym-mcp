@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 
 import { API_URL, CLIENT_HEADER } from "@/lib/env";
@@ -35,7 +36,7 @@ export function UserMenu({ me }: { me: Me }) {
 
   return (
     <div className={styles.menu}>
-      <span className={styles.identity}>
+      <Link href="/settings" className={styles.identity} aria-label="Settings" title="Settings">
         {me.avatar_url ? (
           // eslint-disable-next-line @next/next/no-img-element -- tiny external avatar, not LCP
           <img src={me.avatar_url} alt="" className={styles.avatar} width={28} height={28} />
@@ -45,7 +46,7 @@ export function UserMenu({ me }: { me: Me }) {
           </span>
         )}
         <span className={styles.name}>{me.name ?? me.email}</span>
-      </span>
+      </Link>
       <button type="button" className={styles.signOut} onClick={signOut} disabled={busy}>
         Sign out
       </button>

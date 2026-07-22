@@ -17,6 +17,7 @@ from starlette.middleware.base import RequestResponseEndpoint
 from app.api.deps import CLIENT_HEADER
 from app.api.routers import (
     analytics,
+    connections,
     exercises,
     health,
     me,
@@ -48,6 +49,7 @@ _ROUTERS = (
     prs,
     skills,
     analytics,
+    connections,
     auth_routes,
     oauth_metadata,
     oauth_register,

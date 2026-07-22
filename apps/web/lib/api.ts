@@ -12,13 +12,17 @@ import { cookies } from "next/headers";
 
 import { API_URL, CLIENT_HEADER } from "./env";
 import type {
+  ConnectionList,
   Exercise,
   ExerciseDetail,
   ExerciseList,
+  Frequency,
   Me,
   PrList,
   SessionDetail,
   SessionList,
+  SkillsOverview,
+  Volume,
 } from "./types";
 
 export { API_URL };
@@ -112,6 +116,32 @@ export async function getExerciseBySlug(slug: string): Promise<ExerciseDetail | 
 /** The user's personal records for one exercise (empty list if none). */
 export async function listPrsForExercise(exerciseId: string): Promise<PrList> {
   return getJson<PrList>(`/api/prs?exercise_id=${encodeURIComponent(exerciseId)}`);
+}
+
+/** All of the user's personal records, with the exercise art (docs/07 §Dashboard). */
+export async function listPrs(): Promise<PrList> {
+  return getJson<PrList>("/api/prs");
+}
+
+/** Training volume (sets/reps/tonnage per exercise) between two instants — for the Dashboard. */
+export async function getVolume(fromIso: string, toIso: string): Promise<Volume> {
+  const params = new URLSearchParams({ from: fromIso, to: toIso });
+  return getJson<Volume>(`/api/analytics/volume?${params.toString()}`);
+}
+
+/** Session counts per ISO week for the last `weeks` weeks (frequency heatmap). */
+export async function getFrequency(weeks: number): Promise<Frequency> {
+  return getJson<Frequency>(`/api/analytics/frequency?weeks=${weeks}`);
+}
+
+/** Every skill with the user's progress (stage 0 / 0% when not started). */
+export async function getSkillsOverview(): Promise<SkillsOverview> {
+  return getJson<SkillsOverview>("/api/skills");
+}
+
+/** The user's active OAuth grants (Settings → Connected apps). */
+export async function listConnections(): Promise<ConnectionList> {
+  return getJson<ConnectionList>("/api/connections");
 }
 
 /** Recent workout sessions, newest first (docs/07 §Log — the `/log` home list). */

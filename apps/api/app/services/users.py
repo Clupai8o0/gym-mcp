@@ -43,3 +43,18 @@ async def get(db: AsyncSession, user_id: uuid.UUID) -> User:
     if user is None:
         raise errors.not_found("User not found")
     return user
+
+
+# Display-unit preference (weights are always stored in kg; lb is a UI-only conversion — docs/02).
+_UNIT_PREFS = frozenset({"kg", "lb"})
+
+
+async def update_preferences(db: AsyncSession, user_id: uuid.UUID, *, unit_pref: str) -> User:
+    """Update the user's display preferences (Settings → units toggle, docs/07)."""
+    if unit_pref not in _UNIT_PREFS:
+        raise errors.validation("unit_pref must be 'kg' or 'lb'", unit_pref=unit_pref)
+    user = await get(db, user_id)
+    user.unit_pref = unit_pref
+    await db.flush()
+    await db.refresh(user)
+    return user

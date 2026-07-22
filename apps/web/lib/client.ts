@@ -12,9 +12,14 @@ import type {
   ExerciseDetail,
   ExerciseList,
   LoggedSet,
+  Me,
+  MeUpdate,
+  RevokeConnection,
   Session,
   SetCreate,
   SetUpdate,
+  SkillProgress,
+  SkillProgressUpdate,
 } from "./types";
 
 export class ClientApiError extends Error {
@@ -118,4 +123,26 @@ export async function updateSet(setId: string, changes: SetUpdate): Promise<Logg
 
 export async function deleteSet(setId: string): Promise<void> {
   await request<void>(`/api/sets/${setId}`, { method: "DELETE" });
+}
+
+// ── Skills (edit progress) ───────────────────────────────────────────────────────────────────
+export async function updateSkillProgress(
+  slug: string,
+  payload: SkillProgressUpdate,
+): Promise<SkillProgress> {
+  return request<SkillProgress>(`/api/skills/${encodeURIComponent(slug)}/progress`, {
+    method: "PUT",
+    body: payload,
+  });
+}
+
+// ── Settings ─────────────────────────────────────────────────────────────────────────────────
+export async function updatePreferences(payload: MeUpdate): Promise<Me> {
+  return request<Me>("/api/me", { method: "PATCH", body: payload });
+}
+
+export async function revokeConnection(clientId: string): Promise<RevokeConnection> {
+  return request<RevokeConnection>(`/api/connections/${encodeURIComponent(clientId)}`, {
+    method: "DELETE",
+  });
 }

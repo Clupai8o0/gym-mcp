@@ -459,6 +459,70 @@ Not required for Phase 0. Track here so they don't become surprise blockers:
   write path) and **D27** (app-managed IndexedDB offline queue; minimal SW; install polish → Phase 9)
   in `01`. New web dep: **none** (uses the existing `motion` + generated types). No new env, no
   migration, no `.env.example` change. Added `manifest.webmanifest`, `public/sw.js`, `public/icon.svg`.
-## Phase 8 — Slice: Dashboard + Skills module — NOT STARTED
+## Phase 8 — Slice: Dashboard + Skills module — IN PROGRESS (built + self-verified; **Antigravity frontend-review gate + live authed render outstanding**)
+- **Branch/PR:** `phase-8-dashboard-skills` (cut from `phase-7-log-workout` HEAD, since Phase 7 is
+  not yet merged to `main`; committed locally, push + PR pending human go-ahead).
+- **⚠️ Gate not yet satisfied:** this phase's gate is the **Antigravity frontend review** (docs/08
+  rubric). The code is complete, builds, lints, and typechecks; the **Antigravity pass** and a
+  **live render of the authenticated Dashboard/Skills/Settings against a seeded Neon DB + real
+  Google session** wait on the same external prereqs as Phases 3–7 (Neon provisioning, Google OIDC
+  client) — the app is verified against the real API contract, not yet a live logged-in session.
+- **Backend (additive, test-backed — no migration):**
+  - **PRs carry their illustration** (D28): `PrOut` gained `illustration_url`/`illustration_status`/
+    `is_custom`, read from the exercise `prs.list_prs` already joins — so both REST `/api/prs` **and**
+    the MCP `get_prs` tool return the art (the MCP↔REST contract test still asserts equality).
+  - **Units toggle**: `services/users.update_preferences` + `PATCH /api/me` (`MeUpdate`, `kg|lb`).
+  - **Connected apps** (D29): new **user-scoped** `services/connections` over the OAuth tables —
+    `GET /api/connections` (active grants: name, connected/last-active, live-token count) +
+    `DELETE /api/connections/{client_id}` (revokes **only the caller's own** access+refresh tokens).
+    Reuses the AS's `revoked_at` mechanism; **no change to issuance/PKCE/rotation** → Phase 3 sign-off
+    unaffected. New `connections` router registered in `main.py`; both are thin adapters (guard passes).
+- **Frontend (the slice):**
+  - **Dashboard (`/dashboard`):** server-rendered — **PRs** grid (`PrList`, one card per exercise with
+    its illustration + records, freshest first), **Volume** (`VolumeChart`: three totals + a ranked
+    top-8 bar list) and **Frequency** (`FrequencyHeatmap`: Monday-anchored week cells, token-driven
+    `color-mix` intensity). One **`RangeControl`** (30D/3M/6M/1Y) drives both charts via a URL-synced
+    `?range=` (shareable, like the Library filters); `loading.tsx` skeleton.
+  - **Skills (`/dashboard/skills`):** `SkillsBoard` grid of `SkillRing`s (SVG progress ring, stage over
+    total); tapping one opens `SkillEditor` in a right `Sheet` (stage select + percent slider + stage
+    name + notes) that PUTs `/api/skills/{slug}/progress` and updates the ring in place. `DashboardTabs`
+    sub-nav (Overview / Skills — the secondary module).
+  - **Settings (`/settings`):** `UnitToggle` (optimistic `PATCH /api/me` + `router.refresh()`),
+    **Connected apps** = `ConnectorCard` (copy-able `…/mcp` URL + "Add to Claude" steps) + `ConnectionsList`
+    (revoke with an inline two-step confirm — no native dialog — removing the row once tokens are revoked),
+    and `AccountCard` (identity + sign-out). Reached from the header avatar (`UserMenu` → `/settings`).
+  - **Typed client:** `lib/api-types.ts` regenerated from the FastAPI OpenAPI (`openapi.json`) so the new
+    endpoints + `PrOut` fields are typed — **no `any` at the boundary**. New server reads (`listPrs`,
+    `getVolume`, `getFrequency`, `getSkillsOverview`, `listConnections`) in `lib/api.ts`; browser mutations
+    (`updateSkillProgress`, `updatePreferences`, `revokeConnection`) in `lib/client.ts`; `lib/ranges.ts` +
+    `formatTonnage`/`formatCount`/`formatWeekLabel` helpers. Tokens-only styling; motion via the shared
+    primitives (`Stagger`/`Pressable`/`Sheet`) + reduced-motion; all states (loading/empty/error) present.
+- **DoD evidence:**
+  - **`next build` green** — `/dashboard`, `/dashboard/skills`, `/settings` compile + typecheck as
+    **dynamic** (session-gated); `/` still static. ESLint (incl. React-19 `react-hooks/*`) + `tsc --noEmit`
+    clean; Prettier clean over all authored files (`openapi.json` + `api-types.ts` are prettier-ignored,
+    generated).
+  - **API `uv run pytest -q` → 195 passed** (was 184 → **+11**): connections **service** (list groups per
+    client + first/last activity, revoke kills the access token + is idempotent, unknown-client 404, and
+    **cross-user scoping** — an intruder can't revoke another user's grant), connections **router**
+    (list/revoke/empty/404), `PATCH /api/me` (updates + rejects a bad unit), and the PR list now asserting
+    the illustration fields. `ruff` + `black --check` + `mypy` (strict, 129 source files) clean. The
+    **architecture guard** + **MCP↔REST contract** suites still pass (`get_prs` == `/api/prs` with the new
+    fields on both sides).
+  - **`app.openapi()` builds cleanly — 28 paths**, incl. `GET /api/connections`,
+    `DELETE /api/connections/{client_id}`, and `PATCH /api/me`; `PrOut` carries the three art fields;
+    `ConnectionOut` shape verified.
+- **Outstanding (gated on external prereqs — Neon DB + Google OIDC client, same as Phases 3–7):**
+  - [ ] **Antigravity frontend-review** pass against `apps/web/FRONTEND_REVIEW.md` (docs/08 gate).
+  - [ ] Live authed render: dashboard reflects **real Neon analytics** (PRs with art, volume across the
+        selected range, the frequency heatmap); skills read/write persists; **connected-apps revoke against
+        a live claude.ai grant actually kills the token** (the revoke path is service-tested with a minted
+        token; the live claude.ai round-trip needs the deployed API + real client).
+  - [ ] Lighthouse/CWV budget check (LCP<2.5s, CLS<0.1, INP<200ms) on the deployed preview.
+- **Notes / decisions:** logged **D28** (additive `PrOut` art fields, REST+MCP in lockstep) and **D29**
+  (Settings/Connected-apps are REST-only account-management; user-scoped revoke over the existing hashed-token
+  tables — no AS-semantics change) in `01`. New web dep: **none** (uses the existing `motion` + generated
+  types). No new env, **no migration** (reads existing `illustration_*` columns / OAuth tables; updates the
+  existing `unit_pref`). Regenerated `apps/web/openapi.json` + `lib/api-types.ts`.
 ## Phase 9 — Flagship polish pass — NOT STARTED
 ## Phase 10 — Deploy & launch — NOT STARTED

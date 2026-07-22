@@ -1,0 +1,54 @@
+.card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.avatar {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: var(--radius-full);
+  object-fit: cover;
+}
+
+.initials {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: var(--radius-full);
+  background-color: var(--accent-muted);
+  color: var(--accent);
+  font-size: var(--text-lg);
+}
+
+.meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.name {
+  font-size: var(--text-base);
+  color: var(--text);
+}
+
+.email {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.since {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}

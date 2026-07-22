@@ -11,6 +11,23 @@ export type ExerciseList = components["schemas"]["ExerciseListOut"];
 export type Pr = components["schemas"]["PrOut"];
 export type PrList = components["schemas"]["PrListOut"];
 export type Me = components["schemas"]["MeOut"];
+export type MeUpdate = components["schemas"]["MeUpdate"];
+
+/** Dashboard analytics + skills contracts (Phase 8). */
+export type Volume = components["schemas"]["VolumeOut"];
+export type VolumeItem = components["schemas"]["VolumeItem"];
+export type Frequency = components["schemas"]["FrequencyOut"];
+export type FrequencyItem = components["schemas"]["FrequencyItem"];
+export type SkillsOverview = components["schemas"]["SkillsOverviewOut"];
+export type SkillOverview = components["schemas"]["SkillOverviewItem"];
+export type SkillDetail = components["schemas"]["SkillDetailOut"];
+export type SkillProgress = components["schemas"]["SkillProgressOut"];
+export type SkillProgressUpdate = components["schemas"]["SkillProgressUpsert"];
+
+/** Settings → Connected apps (Phase 8). */
+export type Connection = components["schemas"]["ConnectionOut"];
+export type ConnectionList = components["schemas"]["ConnectionListOut"];
+export type RevokeConnection = components["schemas"]["RevokeConnectionOut"];
 
 /** Workout-log contracts (Phase 7). */
 export type Session = components["schemas"]["SessionOut"];

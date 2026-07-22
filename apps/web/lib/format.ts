@@ -18,6 +18,26 @@ export function formatWeight(kg: number, unit: "kg" | "lb" = "kg"): string {
   return `${text} ${unit}`;
 }
 
+/** A whole-number tonnage in the user's unit, grouped ("1,050 kg") — for volume totals. */
+export function formatTonnage(kg: number, unit: UnitPref = "kg"): string {
+  const value = unit === "lb" ? kgToLb(kg) : kg;
+  return `${Math.round(value).toLocaleString()} ${unit}`;
+}
+
+/** Group a count with thousands separators ("1,204"). */
+export function formatCount(n: number): string {
+  return Math.round(n).toLocaleString();
+}
+
+/** A "Jul 7" label for an ISO **date** (YYYY-MM-DD), parsed as local to avoid TZ drift. */
+export function formatWeekLabel(isoDate: string): string {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  return new Date(y, (m ?? 1) - 1, d ?? 1).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
 /** A PR value + its unit → a display string (unit is one of 'kg' | 'reps' | 's'). */
 export function formatPrValue(value: number, unit: string): string {
   if (unit === "reps") {
@@ -103,7 +123,9 @@ export function formatSetSummary(
 ): string {
   if (set.hold_seconds != null) {
     const base = `${set.hold_seconds}s`;
-    return set.weight_kg != null ? `${formatWeight(set.weight_kg, unit)} · ${base} hold` : `${base} hold`;
+    return set.weight_kg != null
+      ? `${formatWeight(set.weight_kg, unit)} · ${base} hold`
+      : `${base} hold`;
   }
   if (set.weight_kg != null && set.reps != null) {
     return `${formatWeight(set.weight_kg, unit)} × ${set.reps}`;

@@ -31,6 +31,10 @@ async def test_prs_list_and_history(app_client: AsyncClient, db_session: AsyncSe
     assert items[0]["exercise_name"] == "Bench"
     assert items[0]["pr_type"] == "weight"
     assert items[0]["value"] == 110.0
+    # PR rows carry the exercise art for the Dashboard (docs/07 §Dashboard).
+    assert items[0]["illustration_status"] == "pending"
+    assert items[0]["illustration_url"] is None
+    assert items[0]["is_custom"] is False
 
     history = await app_client.get(
         "/api/prs/history", params={"exercise_id": str(exercise.id), "pr_type": "weight"}

@@ -1,0 +1,64 @@
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.name {
+  font-size: var(--text-base);
+  color: var(--text);
+}
+
+.meta {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.confirmText {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+/* A danger-tinted outline pill for the destructive confirm — high contrast on the dark canvas
+ * and restrained. The `button.danger` qualifier outranks the Button's own variant class. */
+button.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+button.danger:hover:not(:disabled) {
+  border-color: var(--danger);
+  background-color: var(--danger-muted);
+}
+
+.error {
+  color: var(--danger);
+  font-size: var(--text-sm);
+}

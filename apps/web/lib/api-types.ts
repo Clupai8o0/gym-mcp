@@ -38,7 +38,8 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /** Update Me */
+        patch: operations["update_me_api_me_patch"];
         trace?: never;
     };
     "/api/exercises": {
@@ -311,6 +312,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Connections */
+        get: operations["list_connections_api_connections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/connections/{client_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke Connection */
+        delete: operations["revoke_connection_api_connections__client_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/oauth/login/google": {
         parameters: {
             query?: never;
@@ -526,6 +561,32 @@ export interface components {
             /** Scope */
             scope?: string | null;
         };
+        /** ConnectionListOut */
+        ConnectionListOut: {
+            /** Items */
+            items: components["schemas"]["ConnectionOut"][];
+        };
+        /**
+         * ConnectionOut
+         * @description A connected chat client + the state of the user's grant to it.
+         */
+        ConnectionOut: {
+            /** Client Id */
+            client_id: string;
+            /** Client Name */
+            client_name: string | null;
+            /** Scope */
+            scope: string | null;
+            /**
+             * Connected At
+             * Format: date-time
+             */
+            connected_at: string;
+            /** Last Active At */
+            last_active_at: string | null;
+            /** Active Token Count */
+            active_token_count: number;
+        };
         /**
          * ExerciseCreate
          * @description Create a custom exercise. ``slug`` is derived from ``name`` when omitted.
@@ -712,6 +773,17 @@ export interface components {
             /** Last Login At */
             last_login_at: string | null;
         };
+        /**
+         * MeUpdate
+         * @description Patch the current user's display preferences (Settings → units, docs/07).
+         */
+        MeUpdate: {
+            /**
+             * Unit Pref
+             * @enum {string}
+             */
+            unit_pref: "kg" | "lb";
+        };
         /** PrHistoryOut */
         PrHistoryOut: {
             /**
@@ -774,6 +846,12 @@ export interface components {
             session_id: string | null;
             /** Notes */
             notes: string | null;
+            /** Illustration Url */
+            illustration_url: string | null;
+            /** Illustration Status */
+            illustration_status: string;
+            /** Is Custom */
+            is_custom: boolean;
         };
         /**
          * ProtectedResourceMetadata
@@ -788,6 +866,18 @@ export interface components {
             scopes_supported: string[];
             /** Bearer Methods Supported */
             bearer_methods_supported: string[];
+        };
+        /**
+         * RevokeConnectionOut
+         * @description How many of the user's tokens were revoked for the client.
+         */
+        RevokeConnectionOut: {
+            /** Client Id */
+            client_id: string;
+            /** Revoked Access */
+            revoked_access: number;
+            /** Revoked Refresh */
+            revoked_refresh: number;
         };
         /** SessionCreate */
         SessionCreate: {
@@ -1130,6 +1220,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MeOut"];
+                };
+            };
+        };
+    };
+    update_me_api_me_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -1760,6 +1883,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FrequencyOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_connections_api_connections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionListOut"];
+                };
+            };
+        };
+    };
+    revoke_connection_api_connections__client_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                client_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevokeConnectionOut"];
                 };
             };
             /** @description Validation Error */

@@ -1,0 +1,43 @@
+.ring {
+  display: block;
+  transform: rotate(-90deg); /* start the arc at 12 o'clock */
+}
+
+.track {
+  fill: none;
+  stroke: var(--surface-3);
+  stroke-width: 7;
+}
+
+.progress {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 7;
+  stroke-linecap: round;
+}
+
+/* Counter-rotate the labels so they read upright despite the ring's -90deg rotation. */
+.stage,
+.total {
+  transform: rotate(90deg);
+  transform-origin: 50px 50px;
+  text-anchor: middle;
+  fill: var(--text);
+  font-family: var(--font-sans);
+}
+
+.stage {
+  font-size: 30px;
+  letter-spacing: var(--tracking-tight);
+  dominant-baseline: middle;
+}
+
+.stageMuted {
+  fill: var(--text-muted);
+}
+
+.total {
+  font-size: 11px;
+  fill: var(--text-muted);
+  dominant-baseline: middle;
+}
