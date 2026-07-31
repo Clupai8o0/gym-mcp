@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { usePathname } from "next/navigation";
 
 import { writeRailPreference } from "@/lib/rail";
 import { OfflineIndicator } from "./OfflineIndicator";
@@ -26,9 +25,6 @@ export interface AppShellProps {
  */
 export function AppShell({ children, sessionActive, sessionBar, railCollapsed }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(railCollapsed);
-  // Home is the one screen that fills the viewport instead of scrolling (Phase 11F). The shell
-  // has to know, because it owns the height and padding the page then divides up.
-  const fills = usePathname() === "/dashboard";
 
   const toggleRail = useCallback(() => {
     setCollapsed((previous) => {
@@ -43,7 +39,6 @@ export function AppShell({ children, sessionActive, sessionBar, railCollapsed }:
       className={styles.shell}
       data-session={sessionActive ? "true" : undefined}
       data-rail={collapsed ? "collapsed" : "expanded"}
-      data-fill={fills ? "true" : undefined}
     >
       <a href="#main" className={styles.skipLink}>
         Skip to content

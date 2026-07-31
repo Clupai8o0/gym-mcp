@@ -86,7 +86,7 @@
 @media (min-width: 768px) {
   .row {
     gap: var(--space-4);
-    padding: var(--space-4) var(--space-5);
+    padding: var(--space-5) var(--space-6);
     border-radius: var(--radius-xl);
   }
 
