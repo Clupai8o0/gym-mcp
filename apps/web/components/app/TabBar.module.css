@@ -1,0 +1,148 @@
+/*
+ * Bottom tab bar (<768px) / left rail (>=768px) — one component, two compositions.
+ * Fixed on both, so the primary navigation is reachable without scrolling on every route.
+ */
+.bar {
+  position: fixed;
+  inset: auto 0 0 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  background-color: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--border);
+  /* Home indicator / gesture bar on iOS (viewport-fit: cover is set in app/layout.tsx). */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* The wordmark belongs to the desktop rail; on mobile the app icon is the brand. */
+.brand {
+  display: none;
+}
+
+.tabs {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.item {
+  display: flex;
+}
+
+.tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  min-height: var(--tabbar-height);
+  padding: var(--space-2) var(--space-1);
+  color: var(--text-muted);
+  transition: color var(--dur-fast) var(--ease-out);
+}
+
+.tab:hover {
+  color: var(--text-secondary);
+}
+
+.tab:active .iconWrap {
+  transform: scale(var(--press-scale));
+}
+
+.active {
+  color: var(--text);
+}
+
+/* A live session recolours Log outright — it is a state, not a place. */
+.live {
+  color: var(--accent);
+}
+
+.iconWrap {
+  position: relative;
+  display: inline-flex;
+  transition: transform var(--dur-micro) var(--ease-out);
+}
+
+.icon {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.badge {
+  position: absolute;
+  top: calc(-1 * var(--space-1));
+  right: calc(-1 * var(--space-1));
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-full);
+  background-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
+.label {
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-normal);
+  line-height: var(--leading-tight);
+}
+
+/* ── Desktop: the same nav as a left rail ─────────────────────────────────────────────── */
+@media (min-width: 768px) {
+  .bar {
+    inset: 0 auto 0 0;
+    width: var(--rail-width);
+    border-top: none;
+    border-right: 1px solid var(--border);
+    padding: var(--space-6) var(--space-4);
+    gap: var(--space-8);
+  }
+
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding-inline: var(--space-3);
+    font-size: var(--text-base);
+    font-weight: var(--weight-medium);
+    letter-spacing: var(--tracking-tight);
+    color: var(--text);
+  }
+
+  .brandMark {
+    width: 1.25rem;
+    height: 1.25rem;
+    color: var(--accent);
+  }
+
+  .tabs {
+    grid-auto-flow: row;
+    grid-auto-columns: initial;
+    gap: var(--space-1);
+  }
+
+  .tab {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: var(--space-3);
+    min-height: 0;
+    padding: var(--space-3);
+    border-radius: var(--radius-lg);
+  }
+
+  .tab:hover {
+    background-color: var(--surface);
+  }
+
+  .active {
+    background-color: var(--surface);
+  }
+
+  .label {
+    font-size: var(--text-sm);
+  }
+}

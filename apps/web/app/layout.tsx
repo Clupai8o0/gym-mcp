@@ -49,8 +49,8 @@ export const viewport: Viewport = {
     { media: "(prefers-color-scheme: light)", color: "#ffffff" },
   ],
   colorScheme: "dark light",
-  // Draw behind the iOS status bar so the translucent bar sits over app chrome (safe-area
-  // padding on the sticky header keeps content clear — AppHeader.module.css).
+  // Draw behind the iOS notch and home indicator; the shell's chrome carries the safe-area
+  // insets itself (TabBar.module.css / (app)/layout.module.css).
   viewportFit: "cover",
 };
 

@@ -114,7 +114,12 @@
 
   /* ── Layout ───────────────────────────────────────────────────────────────── */
   --container: 1200px;
+  /* Marketing's top bar. The authenticated shell has no top chrome (Phase 11B). */
   --nav-height: 3.5rem;
+  /* App shell: bottom tab bar (<768px) / left rail (>=768px), plus the docked session bar. */
+  --tabbar-height: 3.5rem;
+  --sessionbar-height: 3rem;
+  --rail-width: 13rem;
   color-scheme: dark;
 }
 

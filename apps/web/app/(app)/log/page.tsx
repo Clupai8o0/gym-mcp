@@ -2,9 +2,8 @@ import Link from "next/link";
 import type { Metadata } from "next";
 
 import { SessionStarter, SessionSummaryCard } from "@/components/log";
-import { Card } from "@/components/ui";
+import { Card, LocalTime } from "@/components/ui";
 import { getActiveSession, listSessions } from "@/lib/api";
-import { formatTime } from "@/lib/format";
 import styles from "./page.module.css";
 
 export const metadata: Metadata = {
@@ -49,7 +48,9 @@ export default async function LogPage({ searchParams }: { searchParams: Promise<
               <div>
                 <p className="eyebrow">In progress</p>
                 <p className={styles.continueTitle}>{active.title ?? "Workout"}</p>
-                <p className={styles.continueSub}>Started {formatTime(active.performed_at)}</p>
+                <p className={styles.continueSub}>
+                  Started <LocalTime iso={active.performed_at} format="time" />
+                </p>
               </div>
               <span className={styles.continueCta} aria-hidden>
                 Continue →

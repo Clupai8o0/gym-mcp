@@ -28,14 +28,62 @@
   width: 100%;
   max-width: var(--container);
   margin-inline: auto;
-  padding: var(--space-8) var(--space-6) var(--space-16);
-  /* When the skip link jumps here, clear the sticky header; suppress the container focus ring. */
-  scroll-margin-top: var(--nav-height);
+  /* No sticky top bar any more (Phase 11B) — screens open at the top of their own title row.
+   * The bottom padding clears the fixed tab bar, the iOS home indicator, and breathing room. */
+  padding: var(--space-6) var(--space-4)
+    calc(var(--tabbar-height) + env(safe-area-inset-bottom, 0px) + var(--space-8));
   outline: none;
 }
 
-@media (max-width: 560px) {
+/* A live session docks a bar above the tabs; give the content room so nothing hides behind it. */
+.shell[data-session="true"] .main {
+  padding-bottom: calc(
+    var(--tabbar-height) + var(--sessionbar-height) + env(safe-area-inset-bottom, 0px) +
+      var(--space-8)
+  );
+}
+
+/*
+ * The fixed bottom dock: the ambient offline chip stacked over the session bar, both sitting
+ * directly above the tab bar. Transparent to the pointer so an empty dock never swallows a tap.
+ */
+.dock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--tabbar-height) + env(safe-area-inset-bottom, 0px));
+  z-index: 55;
+  pointer-events: none;
+}
+
+.dock > * {
+  pointer-events: auto;
+}
+
+/* The offline chip floats above the dock's own flow so it costs nothing when online. */
+.dockChip {
+  position: absolute;
+  inset: auto 0 100% 0;
+  display: flex;
+  justify-content: center;
+  padding-bottom: var(--space-2);
+}
+
+@media (min-width: 768px) {
+  .shell {
+    padding-left: var(--rail-width);
+  }
+
   .main {
-    padding: var(--space-6) var(--space-4) var(--space-12);
+    padding: var(--space-10) var(--space-8) var(--space-16);
+  }
+
+  .shell[data-session="true"] .main {
+    padding-bottom: calc(var(--sessionbar-height) + var(--space-16));
+  }
+
+  .dock {
+    left: var(--rail-width);
+    bottom: 0;
   }
 }

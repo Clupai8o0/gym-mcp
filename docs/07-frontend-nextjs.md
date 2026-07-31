@@ -13,7 +13,7 @@ apps/web/
 │   ├── (marketing)/
 │   │   └── page.tsx              # landing / signed-out home
 │   ├── (app)/                    # authenticated shell (redirects to login if no session)
-│   │   ├── layout.tsx            # app chrome: nav, view-transition wrapper
+│   │   ├── layout.tsx            # app chrome: bottom tabs / left rail + docked session bar (11B)
 │   │   ├── library/
 │   │   │   ├── page.tsx          # catalog grid: search + filters
 │   │   │   └── [slug]/page.tsx   # exercise detail: illustration + how-to + PRs

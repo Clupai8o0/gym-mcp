@@ -1,7 +1,7 @@
 import Link from "next/link";
 
-import { Badge, Card } from "@/components/ui";
-import { formatDuration, formatRelativeDate, titleCase } from "@/lib/format";
+import { Badge, Card, LocalTime } from "@/components/ui";
+import { formatDuration, titleCase } from "@/lib/format";
 import type { Session } from "@/lib/types";
 import styles from "./SessionSummaryCard.module.css";
 
@@ -15,7 +15,7 @@ export function SessionSummaryCard({ session }: { session: Session }) {
       <Card interactive className={styles.card}>
         <div className={styles.main}>
           <p className={styles.name}>{session.title ?? "Workout"}</p>
-          <p className={styles.date}>{formatRelativeDate(session.performed_at)}</p>
+          <LocalTime iso={session.performed_at} format="relative" className={styles.date} />
         </div>
         <div className={styles.meta}>
           {session.type && <Badge>{titleCase(session.type)}</Badge>}

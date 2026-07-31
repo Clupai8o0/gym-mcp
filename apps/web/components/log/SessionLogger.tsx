@@ -3,12 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-import { Button } from "@/components/ui";
+import { Button, LocalTime } from "@/components/ui";
 import { FadeIn } from "@/components/motion/FadeIn";
 import { ClientApiError, deleteSet as apiDeleteSet, getExerciseBySlug } from "@/lib/client";
 import { useOfflineQueue } from "@/lib/offline/useOfflineQueue";
 import { removeQueuedSet } from "@/lib/offline/queue";
-import { formatRelativeDate, formatTime } from "@/lib/format";
 import type { Exercise, LoggedSet, SessionDetail, SetCreate, UnitPref } from "@/lib/types";
 import { ExerciseBlock } from "./ExerciseBlock";
 import { ExercisePicker } from "./ExercisePicker";
@@ -257,10 +256,12 @@ export function SessionLogger({ session, unitPref }: SessionLoggerProps) {
     <div className={styles.logger}>
       <header className={styles.header}>
         <div>
-          <p className="eyebrow">{formatRelativeDate(session.performed_at)}</p>
+          <p className="eyebrow">
+            <LocalTime iso={session.performed_at} format="relative" />
+          </p>
           <h1 className={styles.title}>{session.title ?? "Workout"}</h1>
           <p className={styles.sub}>
-            Started {formatTime(session.performed_at)}
+            Started <LocalTime iso={session.performed_at} format="time" />
             {session.type ? ` · ${session.type}` : ""}
           </p>
         </div>

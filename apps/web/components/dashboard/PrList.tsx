@@ -1,9 +1,9 @@
 import Link from "next/link";
 
-import { Badge } from "@/components/ui";
+import { Badge, LocalTime } from "@/components/ui";
 import { IllustrationImage } from "@/components/library/IllustrationImage";
 import { Stagger } from "@/components/motion/Stagger";
-import { formatPrValue, formatRelativeDate, prTypeLabel } from "@/lib/format";
+import { formatPrValue, prTypeLabel } from "@/lib/format";
 import type { Pr, UnitPref } from "@/lib/types";
 import styles from "./PrList.module.css";
 
@@ -81,7 +81,9 @@ export function PrList({ prs, unit }: { prs: Pr[]; unit: UnitPref }) {
                 </div>
               ))}
             </dl>
-            <p className={styles.since}>Latest {formatRelativeDate(group.latest)}</p>
+            <p className={styles.since}>
+              Latest <LocalTime iso={group.latest} format="relative" />
+            </p>
           </div>
         </Link>
       ))}

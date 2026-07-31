@@ -29,13 +29,67 @@ export function formatCount(n: number): string {
   return Math.round(n).toLocaleString();
 }
 
-/** A "Jul 7" label for an ISO **date** (YYYY-MM-DD), parsed as local to avoid TZ drift. */
+/*
+ * ── Dates & times ──────────────────────────────────────────────────────────────────────
+ * These are written out by hand instead of via `Intl`. `toLocaleDateString(undefined, …)`
+ * resolves a *different* locale on the server (Node's) than in the browser (the user's),
+ * and even for one locale Node's and Chrome's ICU disagree on details like "pm" vs "PM" —
+ * which surfaced as a live hydration error on `/settings` and `/log/[id]`. Hand-rolled
+ * output depends on nothing but the Date's field accessors, so the only remaining variable
+ * is the **timezone**, and that is what `zone` (and `<LocalTime>`) exist to control.
+ */
+const MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+
+/**
+ * Which clock to read a timestamp against. `"local"` is the viewer's — correct, but only
+ * knowable in the browser. `"utc"` is stable everywhere, so it is what a server render emits
+ * before {@link "@/components/ui/LocalTime"} corrects it on mount.
+ */
+export type Zone = "local" | "utc";
+
+interface Fields {
+  year: number;
+  month: number;
+  day: number;
+  hours: number;
+  minutes: number;
+}
+
+function fields(date: Date, zone: Zone): Fields {
+  return zone === "utc"
+    ? {
+        year: date.getUTCFullYear(),
+        month: date.getUTCMonth(),
+        day: date.getUTCDate(),
+        hours: date.getUTCHours(),
+        minutes: date.getUTCMinutes(),
+      }
+    : {
+        year: date.getFullYear(),
+        month: date.getMonth(),
+        day: date.getDate(),
+        hours: date.getHours(),
+        minutes: date.getMinutes(),
+      };
+}
+
+/** A "Jul 7" label for an ISO **date** (YYYY-MM-DD). Date-only, so no timezone is involved. */
 export function formatWeekLabel(isoDate: string): string {
-  const [y, m, d] = isoDate.split("-").map(Number);
-  return new Date(y, (m ?? 1) - 1, d ?? 1).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
+  const [, month, day] = isoDate.split("-").map(Number);
+  return `${MONTHS[(month ?? 1) - 1]} ${day ?? 1}`;
 }
 
 /** A PR value + its unit → a display string (unit is one of 'kg' | 'reps' | 's'). */
@@ -65,30 +119,27 @@ export function titleCase(value: string): string {
   return value.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export function formatDate(iso: string): string {
-  const date = new Date(iso);
-  return date.toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
+/** "Jul 7, 2026". */
+export function formatDate(iso: string, zone: Zone = "local"): string {
+  const { year, month, day } = fields(new Date(iso), zone);
+  return `${MONTHS[month]} ${day}, ${year}`;
 }
 
 const DAY_MS = 86_400_000;
 
-/** Start-of-day for a date, in the viewer's local timezone. */
-function startOfDay(date: Date): number {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+/** Start-of-day as a day index, so two instants can be compared by calendar day. */
+function dayIndex(date: Date, zone: Zone): number {
+  const { year, month, day } = fields(date, zone);
+  return Date.UTC(year, month, day) / DAY_MS;
 }
 
 /** "Today" / "Yesterday" / a short date — for session headers (docs/07 §Log). */
-export function formatRelativeDate(iso: string): string {
-  const then = new Date(iso);
-  const days = Math.round((startOfDay(new Date()) - startOfDay(then)) / DAY_MS);
+export function formatRelativeDate(iso: string, zone: Zone = "local"): string {
+  const days = dayIndex(new Date(), zone) - dayIndex(new Date(iso), zone);
   if (days === 0) return "Today";
   if (days === 1) return "Yesterday";
   if (days > 1 && days < 7) return `${days} days ago`;
-  return formatDate(iso);
+  return formatDate(iso, zone);
 }
 
 /*
@@ -99,8 +150,21 @@ export function formatRelativeDate(iso: string): string {
  */
 
 /** A short "3:24 PM"-style time for a session/set timestamp. */
-export function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+export function formatTime(iso: string, zone: Zone = "local"): string {
+  const { hours, minutes } = fields(new Date(iso), zone);
+  const suffix = hours < 12 ? "AM" : "PM";
+  const hour12 = hours % 12 === 0 ? 12 : hours % 12;
+  return `${hour12}:${String(minutes).padStart(2, "0")} ${suffix}`;
+}
+
+/** Elapsed seconds → a live "12:04" / "1:12:04" clock (the docked session bar). */
+export function formatElapsed(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const hours = Math.floor(s / 3600);
+  const minutes = Math.floor((s % 3600) / 60);
+  const seconds = s % 60;
+  const mm = hours > 0 ? String(minutes).padStart(2, "0") : String(minutes);
+  return `${hours > 0 ? `${hours}:` : ""}${mm}:${String(seconds).padStart(2, "0")}`;
 }
 
 /** Whole-minute duration → "45 min" / "1 h 05 min". */

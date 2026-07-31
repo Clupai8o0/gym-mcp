@@ -16,3 +16,5 @@ export type { EmptyStateProps } from "./EmptyState";
 export { ErrorState } from "./ErrorState";
 export type { ErrorStateProps } from "./ErrorState";
 export { Spinner } from "./Spinner";
+export { LocalTime } from "./LocalTime";
+export type { LocalTimeProps } from "./LocalTime";

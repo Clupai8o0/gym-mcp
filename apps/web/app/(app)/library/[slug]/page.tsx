@@ -4,10 +4,10 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 
 import { IllustrationImage } from "@/components/library";
-import { Badge, Button, Card, Skeleton } from "@/components/ui";
+import { Badge, Button, Card, LocalTime, Skeleton } from "@/components/ui";
 import { FadeIn } from "@/components/motion/FadeIn";
 import { getExerciseBySlug, listPrsForExercise } from "@/lib/api";
-import { formatDate, formatPrValue, prTypeLabel, titleCase } from "@/lib/format";
+import { formatPrValue, prTypeLabel, titleCase } from "@/lib/format";
 import type { ExerciseDetail } from "@/lib/types";
 import styles from "./page.module.css";
 
@@ -53,7 +53,7 @@ async function PrRecords({ exerciseId }: { exerciseId: string }) {
         <Card key={pr.id} className={styles.prCard}>
           <p className={styles.prLabel}>{prTypeLabel(pr.pr_type)}</p>
           <p className={`${styles.prValue} tnum`}>{formatPrValue(pr.value, pr.unit)}</p>
-          <p className={styles.prDate}>{formatDate(pr.achieved_at)}</p>
+          <LocalTime iso={pr.achieved_at} className={styles.prDate} />
         </Card>
       ))}
     </div>

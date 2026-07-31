@@ -162,14 +162,17 @@ export const getActiveSession = cache(async (): Promise<Session | null> => {
   return session;
 });
 
-/** One session with its sets grouped by exercise, or `null` if not found / not the user's. */
-export async function getSession(sessionId: string): Promise<SessionDetail | null> {
+/**
+ * One session with its sets grouped by exercise, or `null` if not found / not the user's.
+ * `cache`d so the shell's session bar and `/log/[id]` share a single fetch per request.
+ */
+export const getSession = cache(async (sessionId: string): Promise<SessionDetail | null> => {
   const response = await apiFetch(`/api/sessions/${encodeURIComponent(sessionId)}`);
   if (response.status === 404) return null;
   if (!response.ok) {
     throw new ApiError(response.status, `GET session → ${response.status}`);
   }
   return (await response.json()) as SessionDetail;
-}
+});
 
 export type { Exercise };

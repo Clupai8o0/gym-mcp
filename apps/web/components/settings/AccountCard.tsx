@@ -2,9 +2,8 @@
 
 import { useState } from "react";
 
-import { Button, Card } from "@/components/ui";
+import { Button, Card, LocalTime } from "@/components/ui";
 import { API_URL, CLIENT_HEADER } from "@/lib/env";
-import { formatDate } from "@/lib/format";
 import type { Me } from "@/lib/types";
 import styles from "./AccountCard.module.css";
 
@@ -42,7 +41,9 @@ export function AccountCard({ me }: { me: Me }) {
         <div className={styles.meta}>
           <span className={styles.name}>{me.name ?? me.email}</span>
           <span className={styles.email}>{me.email}</span>
-          <span className={styles.since}>Member since {formatDate(me.created_at)}</span>
+          <span className={styles.since}>
+            Member since <LocalTime iso={me.created_at} />
+          </span>
         </div>
       </div>
       <Button variant="outline" onClick={signOut} loading={busy}>

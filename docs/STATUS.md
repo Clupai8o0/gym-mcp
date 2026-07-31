@@ -657,4 +657,62 @@ Not required for Phase 0. Track here so they don't become surprise blockers:
   `toLocaleTimeString(undefined, …)` inside the client `SessionLogger`, the same locale bug the
   handover flagged for `formatDate` on `/settings`. Both are fixed together in 11B.
 
+## Phase 11B — Mobile shell: bottom tabs + docked session bar — DONE (built + self-verified; **Antigravity frontend-review gate outstanding**)
+- **Branch/PR:** `phase-11b-mobile-shell` (cut from `phase-11a-session-lifecycle` HEAD; committed
+  locally, push + PR pending human go-ahead).
+- **⚠️ Gate not yet satisfied:** UI phase → the **Antigravity frontend review** (docs/08 rubric,
+  `apps/web/FRONTEND_REVIEW.md`) is outstanding, as it is for Phases 6–9. Recorded and carried on
+  per the handover's working agreement. Lighthouse/CWV still needs a deploy.
+- **Pure frontend — no API, schema, or migration change.**
+- **Scope (shipped):**
+  - **`TabBar`** — one component, two compositions: a bottom tab bar below 768px (inside the thumb
+    arc, `env(safe-area-inset-bottom)` respected) and the **same** nav as a **left rail** at ≥768px.
+    Four labelled tabs with line-art icons on a 24px grid — **Home · Library · Log · You**; never
+    icon-only. **`Log` is a state, not a destination:** with a live session it takes `--accent` and a
+    dot badge (plus an `sr-only` "workout in progress"). The wordmark appears only in the desktop rail.
+  - **`SessionBar`** — docked directly above the tab bar (above the content column on desktop) on
+    every authed route while a session is live: title · set count · a live elapsed clock, tapping
+    through to `/log/[id]`. Driven by **`getActiveSession()`** (11A), never a date. It hides on the
+    session's own page, where it would only repeat the header it points at.
+  - **Top chrome removed.** `AppHeader` / `AppNav` / `UserMenu` **deleted**; each screen's own title
+    row scrolls with the content. Sign-out now lives only in the account card under **You** — it is
+    no longer a permanently visible destructive control a thumb-width from the nav. The skip link
+    stays, and the offline chip moved into the bottom dock (floating above it, so it costs nothing
+    when online).
+  - **The locale/timezone hydration bug — fixed as a class, not a case.** `formatDate`/`formatTime`/
+    `formatRelativeDate`/`formatWeekLabel` no longer touch `Intl`: `toLocaleDateString(undefined, …)`
+    resolves Node's locale on the server and the user's in the browser, and even within one locale
+    Node's and Chrome's ICU disagree (`pm` vs `PM`). They are now written out by hand and take an
+    explicit `Zone`. The remaining variable — the viewer's timezone — is owned by a new
+    **`ui/LocalTime`**, which renders UTC server-side and re-renders local once hydrated via
+    `useSyncExternalStore` (`lib/hydration.ts`; no `setState`-in-effect, which the React-19 lint
+    rules reject). Adopted at all eight call sites.
+  - New layout tokens (`--tabbar-height`, `--sessionbar-height`, `--rail-width`); `--nav-height` now
+    belongs to marketing only. Library-detail's sticky media offset and the `app-header`
+    view-transition anchor (both dead with the header) removed. `getSession` is React-`cache`d so the
+    shell's session bar and `/log/[id]` share one fetch.
+- **DoD evidence** (all against the live local stack — real seeded Postgres, minted dev session):
+  - **`next build` green** (9 static pages; all authed routes still dynamic), **`eslint .`** and
+    **`tsc --noEmit`** clean. API untouched → the Phase 11A suite (**209 passed**) still stands.
+  - **Zero console errors and zero hydration warnings** on `/`, `/library`, `/log`, `/dashboard`,
+    `/dashboard/skills`, `/settings` **and** on `/log/[id]` + `/library/[slug]`, verified by loading
+    each in a real browser and capturing `console` + `pageerror`. **The `/settings` hydration error
+    is gone** — and so is the one on `/log/[id]` that this pass also found (same root cause).
+  - **At 393×759 the tab bar and session bar are visible without scrolling on every authed route**
+    (both are fixed; `.main` reserves their height plus the safe-area inset so nothing hides behind).
+  - **Session bar present on `/dashboard`, `/library`, `/settings` while live → absent on all three
+    immediately after Finish**, asserted programmatically; and absent on `/log/[id]` by design.
+  - **Keyboard walk-through** (393×759): Tab 1 = "Skip to content" → Tabs 2–5 = Home/Library/Log/You
+    → Tab 6+ = page content; **every stop shows a 2px solid accent focus ring**; activating the skip
+    link moves focus to `#main`.
+  - **Reduced motion honoured** — with `prefers-reduced-motion: reduce` the session bar's pulse
+    resolves to `animation-name: none`. **Dark signature + light variant** both rendered clean.
+  - **≥768px renders the left rail**, not a stretched tab bar (screenshotted at 1280×900: rail with
+    wordmark, content column offset, session bar docked at the bottom of that column).
+  - Tokens-only styling: no hardcoded hex/ms; only the established hairline `1px`/`2px` and intrinsic
+    `rem` icon sizes the existing components already use.
+- **Notes / decisions:** logged **D32** in `01` (one nav component for both breakpoints; `Log` as a
+  state; hand-rolled date formatting + `LocalTime` rendering UTC-then-local rather than blanking or
+  guessing a timezone; session bar suppressed on its own page). No new dependency, no new env.
+
 ## Phase 10 — Deploy & launch — NOT STARTED

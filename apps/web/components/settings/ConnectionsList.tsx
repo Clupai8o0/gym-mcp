@@ -2,9 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { Badge, Button, Card, EmptyState } from "@/components/ui";
+import { Badge, Button, Card, EmptyState, LocalTime } from "@/components/ui";
 import { ClientApiError, NetworkError, revokeConnection } from "@/lib/client";
-import { formatRelativeDate } from "@/lib/format";
 import type { Connection } from "@/lib/types";
 import styles from "./ConnectionsList.module.css";
 
@@ -70,9 +69,12 @@ export function ConnectionsList({ connections }: { connections: Connection[] }) 
               {connection.active_token_count > 0 && <Badge tone="accent">Active</Badge>}
             </div>
             <p className={styles.meta}>
-              Connected {formatRelativeDate(connection.connected_at)}
+              Connected <LocalTime iso={connection.connected_at} format="relative" />
               {connection.last_active_at && (
-                <> · last used {formatRelativeDate(connection.last_active_at)}</>
+                <>
+                  {" · last used "}
+                  <LocalTime iso={connection.last_active_at} format="relative" />
+                </>
               )}
             </p>
           </div>

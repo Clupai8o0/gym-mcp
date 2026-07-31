@@ -23,7 +23,8 @@
 
 .media {
   position: sticky;
-  top: calc(var(--nav-height) + var(--space-6));
+  /* No sticky top bar in the app shell any more (Phase 11B) — just breathing room. */
+  top: var(--space-6);
 }
 
 .content {

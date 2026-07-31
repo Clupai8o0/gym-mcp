@@ -108,22 +108,12 @@ svg {
 
 /* ── View Transitions (docs/08 §Implementation) ──────────────────────────────────────
  * List→detail shared-element morph (Library) is driven by React `<ViewTransition>` with a
- * matching `name`; here we tune the morph and anchor the persistent chrome. The app shell's
- * top bar keeps a stable `view-transition-name` so it never slides during navigation. */
+ * matching `name`; here we tune the morph. The shell's persistent chrome (tab bar / rail and
+ * the docked session bar) lives outside the transitioning subtree, so it stays put on its own
+ * — there is no top bar to anchor any more (Phase 11B). */
 ::view-transition-group(*) {
   animation-duration: var(--dur-slow);
   animation-timing-function: var(--ease-out);
-}
-
-::view-transition-group(app-header) {
-  animation: none;
-  z-index: 100;
-}
-::view-transition-old(app-header) {
-  display: none;
-}
-::view-transition-new(app-header) {
-  animation: none;
 }
 
 /* Soften the illustration morph mid-flight to hide pixel interpolation. */

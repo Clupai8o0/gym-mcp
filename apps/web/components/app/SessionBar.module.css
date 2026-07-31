@@ -1,0 +1,90 @@
+/*
+ * Sits inside the layout's fixed `.dock`, directly above the tab bar — so it is visible
+ * without scrolling on every authed route while a workout is live. The dock owns the
+ * positioning (and the desktop rail offset); this file owns the bar itself.
+ */
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--sessionbar-height);
+  padding: var(--space-2) var(--space-4);
+  background-color: var(--surface);
+  border-top: 1px solid var(--border);
+  color: var(--text);
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    transform var(--dur-micro) var(--ease-out);
+}
+
+.bar:hover {
+  background-color: var(--surface-2);
+}
+
+.bar:active {
+  transform: scale(var(--press-scale));
+}
+
+/* The one ambient loop in the chrome: a slow accent pulse that reads as "still running". */
+.pulse {
+  flex: none;
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-full);
+  background-color: var(--accent);
+  animation: session-pulse var(--dur-loop) var(--ease-in-out) infinite;
+}
+
+@keyframes session-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse {
+    animation: none;
+  }
+}
+
+.main {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+}
+
+.meta {
+  flex: none;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.elapsed {
+  flex: none;
+  min-width: 4ch;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--accent);
+}
+
+.chevron {
+  flex: none;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+@media (min-width: 768px) {
+  .bar {
+    padding-inline: var(--space-6);
+  }
+}
