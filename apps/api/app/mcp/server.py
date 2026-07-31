@@ -27,7 +27,7 @@ from app.mcp.runtime import WRITE_SCOPE
 from app.schemas.analytics import FrequencyItem, FrequencyOut, VolumeItem, VolumeOut
 from app.schemas.exercises import ExerciseDetailOut, ExerciseListOut, ExerciseOut
 from app.schemas.prs import PrHistoryOut, PrListOut, PrOut
-from app.schemas.sessions import SessionDetailOut, SessionListOut, SessionOut
+from app.schemas.sessions import ActiveSessionOut, SessionDetailOut, SessionListOut, SessionOut
 from app.schemas.sets import LoggedSetOut, SetOut
 from app.schemas.skills import (
     SkillDetailOut,
@@ -185,6 +185,27 @@ async def list_sessions(
         limit=limit,
         offset=offset,
     ).model_dump(mode="json")
+
+
+@mcp.tool()
+async def get_active_session() -> dict[str, Any]:
+    """The workout currently in progress, or ``{"session": null}`` if the user isn't training."""
+    async with runtime.open_session() as db:
+        row = await sessions.get_active_session(db, user_id=runtime.current_user_id())
+        return ActiveSessionOut(session=SessionOut.model_validate(row) if row else None).model_dump(
+            mode="json"
+        )
+
+
+@mcp.tool()
+async def finish_session(session_id: uuid.UUID) -> dict[str, Any]:
+    """End a workout, storing its duration (needs the write scope). Safe to call twice."""
+    runtime.require_scope(WRITE_SCOPE)
+    async with runtime.open_session() as db:
+        row = await sessions.finish_session(
+            db, user_id=runtime.current_user_id(), session_id=session_id
+        )
+        return SessionOut.model_validate(row).model_dump(mode="json")
 
 
 @mcp.tool()

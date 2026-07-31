@@ -112,6 +112,11 @@ export async function deleteSession(sessionId: string): Promise<void> {
   await request<void>(`/api/sessions/${sessionId}`, { method: "DELETE" });
 }
 
+/** End a workout and store its duration (Phase 11A). Idempotent server-side — safe to retry. */
+export async function finishSession(sessionId: string): Promise<Session> {
+  return request<Session>(`/api/sessions/${sessionId}/finish`, { method: "POST" });
+}
+
 // ── Sets ───────────────────────────────────────────────────────────────────────────────────
 export async function logSet(sessionId: string, payload: SetCreate): Promise<LoggedSet> {
   return request<LoggedSet>(`/api/sessions/${sessionId}/sets`, { method: "POST", body: payload });

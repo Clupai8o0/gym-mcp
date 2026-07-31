@@ -51,6 +51,8 @@ REST surface plus catalog search, so chat and UI have parity.
 | `get_exercise` | `exercises.get` | Full detail incl. `illustration_url` |
 | `create_custom_exercise` | `exercises.create_custom` | Add a user's own movement |
 | `log_session` | `sessions.create` | Start/record a session |
+| `get_active_session` | `sessions.get_active_session` | The in-progress session, or `null` (Phase 11A) |
+| `finish_session` | `sessions.finish_session` | End a session + store its duration (Phase 11A) |
 | `get_session` | `sessions.get` | Session + sets grouped by exercise |
 | `list_sessions` | `sessions.list` | Filter by type/date |
 | `log_set` | `sets.log_set` | Log a set; auto PR detection |

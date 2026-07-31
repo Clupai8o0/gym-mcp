@@ -3,8 +3,8 @@ import type { Metadata } from "next";
 
 import { SessionStarter, SessionSummaryCard } from "@/components/log";
 import { Card } from "@/components/ui";
-import { listSessions } from "@/lib/api";
-import { formatTime, isToday } from "@/lib/format";
+import { getActiveSession, listSessions } from "@/lib/api";
+import { formatTime } from "@/lib/format";
 import styles from "./page.module.css";
 
 export const metadata: Metadata = {
@@ -22,8 +22,9 @@ export default async function LogPage({ searchParams }: { searchParams: Promise<
   const params = await searchParams;
   const exerciseSlug = one(params.exercise) || undefined;
 
-  const { items } = await listSessions(20);
-  const active = items.find((session) => isToday(session.performed_at));
+  // "In progress" comes from the server's lifecycle flag (`ended_at IS NULL`), never from a
+  // date comparison — that used to evaluate in the server's timezone (Phase 11A).
+  const [{ items }, active] = await Promise.all([listSessions(20), getActiveSession()]);
   const recent = items.filter((session) => session.id !== active?.id);
   const continueHref = active
     ? `/log/${active.id}${exerciseSlug ? `?add=${encodeURIComponent(exerciseSlug)}` : ""}`

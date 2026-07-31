@@ -21,21 +21,32 @@ scoped to the account that authorized this connection.
 - **Units are metric and canonical:** weights in **kilograms**, holds/durations in
   **seconds**. Convert for display yourself; always send kg/seconds.
 - **Times are ISO-8601** (`2026-07-22T18:30:00Z`), UTC canonical.
-- **Reads** need the `workouts.read` scope; **writes** (`log_session`, `log_set`,
-  `create_custom_exercise`, `update_skill_progress`) need `workouts.write`.
+- **Reads** need the `workouts.read` scope; **writes** (`log_session`, `finish_session`,
+  `log_set`, `create_custom_exercise`, `update_skill_progress`) need `workouts.write`.
+
+## Session lifecycle
+A session is **in progress** until it is finished — `ended_at` is `null`, and nothing about
+the calendar date is involved. Before starting a new workout, call `get_active_session()`:
+if it returns one, log into that instead of creating a duplicate. `finish_session(id)`
+closes it and stores `duration_minutes`; it is safe to call twice. A session left open and
+untouched for 12 hours is finished automatically the next time anything reads it, dated
+from its last set.
 
 ## Typical workflow
-1. `search_exercises("bench press")` → find the movement and its id.
-2. `log_session(performed_at=..., type="upper")` → start/record a session; keep its `id`.
-3. `log_set(session_id, exercise="bench press", set_number=1, weight_kg=80, reps=5)` →
+1. `get_active_session()` → already training? Reuse that `session_id` and skip to step 3.
+2. `search_exercises("bench press")` → find the movement and its id.
+3. `log_session(performed_at=..., type="upper")` → start/record a session; keep its `id`.
+4. `log_set(session_id, exercise="bench press", set_number=1, weight_kg=80, reps=5)` →
    log each set. The result includes a **PR verdict** (`pr.is_pr`, `pr.pr_type`) — celebrate
    personal records.
-4. `get_session(session_id)` → review the session with its sets grouped by exercise.
-5. `get_prs()` / `get_volume_summary(from, to)` / `get_session_frequency()` → progress.
+5. `finish_session(session_id)` → when the workout is over.
+6. `get_session(session_id)` → review the session with its sets grouped by exercise.
+7. `get_prs()` / `get_volume_summary(from, to)` / `get_session_frequency()` → progress.
 
 ## Tools
 - **Library:** `search_exercises`, `get_exercise`, `create_custom_exercise`
-- **Logging:** `log_session`, `list_sessions`, `get_session`, `get_session_sets`, `log_set`
+- **Logging:** `log_session`, `get_active_session`, `finish_session`, `list_sessions`,
+  `get_session`, `get_session_sets`, `log_set`
 - **Records:** `get_prs`, `get_pr_history`
 - **Analytics:** `get_volume_summary`, `get_session_frequency`
 - **Skills (calisthenics tree):** `get_skill_overview`, `get_skill_detail`,

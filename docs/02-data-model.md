@@ -98,8 +98,9 @@ create table workout_sessions (
   title            text,                            -- "Upper — Power", free text
   type             text,                            -- optional tag: push/pull/legs/upper/lower/custom...
   performed_at     timestamptz not null,
+  ended_at         timestamptz,                     -- null = in progress (Phase 11A, migration 0004)
   notes            text,
-  duration_minutes int,
+  duration_minutes int,                             -- derived from performed_at→ended_at on finish
   created_at       timestamptz not null default now()
 );
 create index workout_sessions_user_date_idx on workout_sessions (user_id, performed_at desc);

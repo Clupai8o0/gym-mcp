@@ -21,6 +21,8 @@ class SessionOut(ORMModel):
     title: str | None
     type: str | None
     performed_at: datetime
+    #: ``None`` while the workout is in progress; stamped by ``POST …/finish`` (Phase 11A).
+    ended_at: datetime | None
     notes: str | None
     duration_minutes: int | None
     created_at: datetime
@@ -28,6 +30,16 @@ class SessionOut(ORMModel):
 
 class SessionListOut(PageMeta):
     items: list[SessionOut]
+
+
+class ActiveSessionOut(BaseModel):
+    """The user's in-progress session, or ``null`` when they aren't training.
+
+    Wrapped rather than returned bare so "no active session" is an ordinary 200 with a
+    typed, nullable field — clients poll this on every screen and a 404 would be noise.
+    """
+
+    session: SessionOut | None
 
 
 class ExerciseSetGroup(BaseModel):

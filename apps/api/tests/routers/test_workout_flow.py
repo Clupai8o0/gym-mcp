@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -90,6 +92,39 @@ async def test_log_set_into_missing_session_is_404(
         "/api/sessions/00000000-0000-0000-0000-000000000000/sets",
         json={"exercise_id": exercise_id, "set_number": 1, "reps": 5},
     )
+    assert response.status_code == 404
+
+
+async def test_active_and_finish_endpoints(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """`GET /active` reflects the lifecycle, and `/finish` is idempotent over HTTP (Phase 11A)."""
+    assert (await app_client.get("/api/sessions/active")).json()["session"] is None
+
+    # Started *now* — a backfilled historical session (like `_PERFORMED_AT`) is deliberately
+    # never "active": it is already older than the staleness window.
+    now = datetime.now(tz=UTC).isoformat()
+    created = await app_client.post("/api/sessions", json={"performed_at": now})
+    session_id = created.json()["id"]
+    assert created.json()["ended_at"] is None
+
+    active = await app_client.get("/api/sessions/active")
+    assert active.status_code == 200
+    assert active.json()["session"]["id"] == session_id
+
+    finished = await app_client.post(f"/api/sessions/{session_id}/finish")
+    assert finished.status_code == 200
+    body = finished.json()
+    assert body["ended_at"] is not None and body["duration_minutes"] is not None
+
+    again = await app_client.post(f"/api/sessions/{session_id}/finish")
+    assert again.status_code == 200 and again.json()["ended_at"] == body["ended_at"]
+
+    assert (await app_client.get("/api/sessions/active")).json()["session"] is None
+
+
+async def test_finish_missing_session_is_404(app_client: AsyncClient) -> None:
+    response = await app_client.post("/api/sessions/00000000-0000-0000-0000-000000000000/finish")
     assert response.status_code == 404
 
 

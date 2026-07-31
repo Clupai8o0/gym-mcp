@@ -91,10 +91,12 @@ export function formatRelativeDate(iso: string): string {
   return formatDate(iso);
 }
 
-/** True when the ISO timestamp falls on the viewer's current local day. */
-export function isToday(iso: string): boolean {
-  return startOfDay(new Date(iso)) === startOfDay(new Date());
-}
+/*
+ * `isToday` used to live here and answered "is a workout in progress?" from a server
+ * component — i.e. in the server's timezone. Phase 11A replaced it with the real lifecycle
+ * flag (`getActiveSession()` / `ended_at IS NULL`); it is deliberately not re-exported so
+ * the heuristic can't come back.
+ */
 
 /** A short "3:24 PM"-style time for a session/set timestamp. */
 export function formatTime(iso: string): string {

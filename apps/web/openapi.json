@@ -543,6 +543,28 @@
         }
       }
     },
+    "/api/sessions/active": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Get Active Session",
+        "description": "The in-progress session, or `null`. May finish sessions abandoned >12 h (see the service).",
+        "operationId": "get_active_session_api_sessions_active_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActiveSessionOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/sessions/{session_id}": {
       "get": {
         "tags": [
@@ -657,6 +679,50 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{session_id}/finish": {
+      "post": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Finish Session",
+        "description": "Close a session and store its duration. Idempotent \u2014 finishing a finished one is a no-op.",
+        "operationId": "finish_session_api_sessions__session_id__finish_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionOut"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -1655,6 +1721,26 @@
   },
   "components": {
     "schemas": {
+      "ActiveSessionOut": {
+        "properties": {
+          "session": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "session"
+        ],
+        "title": "ActiveSessionOut",
+        "description": "The user's in-progress session, or ``null`` when they aren't training.\n\nWrapped rather than returned bare so \"no active session\" is an ordinary 200 with a\ntyped, nullable field \u2014 clients poll this on every screen and a 404 would be noise."
+      },
       "AuthorizationServerMetadata": {
         "properties": {
           "issuer": {
@@ -2828,6 +2914,18 @@
             "format": "date-time",
             "title": "Performed At"
           },
+          "ended_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
           "notes": {
             "anyOf": [
               {
@@ -2869,6 +2967,7 @@
           "title",
           "type",
           "performed_at",
+          "ended_at",
           "notes",
           "duration_minutes",
           "created_at",
@@ -2942,6 +3041,18 @@
             "format": "date-time",
             "title": "Performed At"
           },
+          "ended_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
           "notes": {
             "anyOf": [
               {
@@ -2976,6 +3087,7 @@
           "title",
           "type",
           "performed_at",
+          "ended_at",
           "notes",
           "duration_minutes",
           "created_at"

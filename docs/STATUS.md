@@ -598,4 +598,63 @@ Not required for Phase 0. Track here so they don't become surprise blockers:
   sliding tab indicator (motion audit #7), since that would reintroduce `motion` to every authed page's
   initial bundle, undoing the perf work; the snap indicators stay. New web deps: **none** (sharp for the
   icon script is transitive via Next). No new env, **no migration**.
+## Phase 11A — Session lifecycle — DONE (verified on local Postgres)
+- **Branch/PR:** `phase-11a-session-lifecycle` (cut from `phase-9-polish` HEAD, since Phase 9 is not
+  yet merged to `main`; committed locally, push + PR pending human go-ahead).
+- **Why:** a session had `performed_at` and nothing else, so "is a workout in progress?" was
+  `isToday(performed_at)` **inside a server component** — it evaluated in the server's timezone
+  (UTC in production). Observed in the running app: training at 5 pm in UTC−8 reads as "tomorrow"
+  (no Continue card → a duplicate session), a workout finished at 7 am still reads "In progress" at
+  11 pm, and `duration_minutes` rendered on the recent-workouts list although **nothing ever wrote it**.
+- **Scope (shipped):**
+  - **Migration `0004_session_ended_at`** — additive, reversible `workout_sessions.ended_at
+    TIMESTAMPTZ NULL`. No backfill: existing rows read as never-finished and the read-time
+    staleness rule retires them (D31). `docs/02` DDL updated.
+  - **`services/sessions`** — `finish_session()` (stamps `ended_at`, derives + stores
+    `duration_minutes`, **idempotent**) and `get_active_session()` (newest row with `ended_at IS
+    NULL`; sweeps anything untouched >`STALE_AFTER` = 12 h, dating the close from that session's
+    last set). **No date arithmetic or timezone logic survives anywhere in the resolution path.**
+  - **REST** — `GET /api/sessions/active` (declared *before* `/{session_id}` so the literal wins)
+    returning `ActiveSessionOut {session: SessionOut | null}`, and `POST /api/sessions/{id}/finish`.
+    Both thin adapters; `SessionOut` gained `ended_at`. `docs/03` surface table updated.
+  - **MCP** — `get_active_session` + `finish_session` tools (write scope on finish), same services,
+    same schemas; `tempo://guide` gained a "Session lifecycle" section telling a model to check for
+    an active session before starting one. `docs/04` tool table updated (15 → **17 tools**).
+  - **Frontend** — `lib/api.getActiveSession()` (React-`cache`d) + `lib/client.finishSession()`;
+    `/log` resolves the Continue card from the lifecycle flag instead of `items.find(isToday(…))`;
+    new `components/log/FinishWorkout` in the session logger (separated from "+ Add exercise" by a
+    rule so Finish is never the button under a mistimed thumb; shows a "Workout finished · 1 h 27
+    min" chip afterward, and flags any sets still in the offline queue). `openapi.json` +
+    `lib/api-types.ts` regenerated (**28 → 30 paths**). **`isToday` deleted** from `lib/format.ts`.
+- **DoD evidence:**
+  - **Migration:** `alembic upgrade head` → `ended_at timestamptz NULL` present on
+    `workout_sessions`; **`alembic check` → "No new upgrade operations detected"** (no drift);
+    `downgrade base` → only `alembic_version` remains; **re-`upgrade head` repeatable**; `downgrade
+    -1` drops just `ended_at` and re-upgrading restores it.
+  - **`uv run pytest -q` → 209 passed** (was 195 → **+14**). New: finish stamps duration, finish is
+    idempotent (a second call with a later clock does not move `ended_at`), finish someone else's
+    session is 404 *and leaves it untouched*, active = newest unfinished, active is `None` once
+    finished, active is user-scoped, a dangling session is auto-finished **from its last set**, one
+    without sets falls back to its start, an 11 h-old session **survives** the sweep, and the sweep
+    retires older dangling rows while keeping the live one. Plus REST `active`/`finish` (incl. 404)
+    and **two MCP↔REST contract tests** — `get_active_session` byte-equals `GET /api/sessions/active`,
+    and an MCP `finish_session` round-trips through REST *and* flips REST's `active` to `null`.
+  - **Architecture guard + MCP↔REST contract suites still pass**; `tools/list` now asserts **17**.
+  - **`ruff` + `black --check` + `mypy` (strict, 135 source files) clean**; web `next build`,
+    `eslint .`, `tsc --noEmit` all clean.
+  - **Manually verified against local Postgres + a live uvicorn/next pair** (real seeded DB, minted
+    dev session cookie): created a session → `GET /active` returned it → `POST …/finish` →
+    `ended_at` + `duration_minutes: 1` → **a second finish returned the identical `ended_at`** →
+    `/active` rolled to the next unfinished session. A backfilled 3-day-old session was **swept on
+    the very next read** (`ended_at = performed_at`, duration 0). Then through the **UI at 393×759**:
+    `/log` showed the In-progress card, Continue → **Finish workout** → "Workout finished · 1 h 27
+    min", back on `/log` the card was gone and the workout appeared under Recent with its duration.
+    Zero page errors on `/log` and `/log/[id]` during the flow.
+- **Notes / decisions:** logged **D31** in `01` (lifecycle = `ended_at`; lazy 12 h read-time sweep
+  dated from the last set; **no** auto-finish on create — `log_session` is also how chat backfills
+  historical workouts; idempotent finish for retry/offline safety). No new dependency, no new env.
+- **Carried into 11B:** `/log/[sessionId]` also throws a **hydration error** — `formatTime` uses
+  `toLocaleTimeString(undefined, …)` inside the client `SessionLogger`, the same locale bug the
+  handover flagged for `formatDate` on `/settings`. Both are fixed together in 11B.
+
 ## Phase 10 — Deploy & launch — NOT STARTED

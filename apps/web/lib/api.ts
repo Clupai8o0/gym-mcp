@@ -12,6 +12,7 @@ import { cookies } from "next/headers";
 
 import { API_URL, CLIENT_HEADER } from "./env";
 import type {
+  ActiveSession,
   ConnectionList,
   Exercise,
   ExerciseDetail,
@@ -19,6 +20,7 @@ import type {
   Frequency,
   Me,
   PrList,
+  Session,
   SessionDetail,
   SessionList,
   SkillsOverview,
@@ -148,6 +150,17 @@ export async function listConnections(): Promise<ConnectionList> {
 export async function listSessions(limit = 20, offset = 0): Promise<SessionList> {
   return getJson<SessionList>(`/api/sessions?limit=${limit}&offset=${offset}`);
 }
+
+/**
+ * The workout in progress, or `null` (Phase 11A). This is the *only* correct way to ask "is
+ * the user training?" — a server component comparing `performed_at` to today would evaluate
+ * in the server's timezone, not the lifter's. `cache`d so the shell and the page share one
+ * round-trip per request.
+ */
+export const getActiveSession = cache(async (): Promise<Session | null> => {
+  const { session } = await getJson<ActiveSession>("/api/sessions/active");
+  return session;
+});
 
 /** One session with its sets grouped by exercise, or `null` if not found / not the user's. */
 export async function getSession(sessionId: string): Promise<SessionDetail | null> {

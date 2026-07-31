@@ -33,6 +33,8 @@ export type RevokeConnection = components["schemas"]["RevokeConnectionOut"];
 export type Session = components["schemas"]["SessionOut"];
 export type SessionDetail = components["schemas"]["SessionDetailOut"];
 export type SessionList = components["schemas"]["SessionListOut"];
+/** The in-progress session, or `null` — the lifecycle contract (Phase 11A). */
+export type ActiveSession = components["schemas"]["ActiveSessionOut"];
 export type SessionCreate = components["schemas"]["SessionCreate"];
 export type ExerciseSetGroup = components["schemas"]["ExerciseSetGroup"];
 export type WorkoutSet = components["schemas"]["SetOut"];

@@ -1,7 +1,14 @@
-"""Workout-session service: create, list (filtered), detail-with-sets, update, delete.
+"""Workout-session service: create, list (filtered), detail-with-sets, update, delete,
+plus the **session lifecycle** (finish / resolve-the-active-one).
 
 Every read/write is scoped to ``user_id``; a session that isn't the user's reads as
 ``not_found`` (we don't distinguish missing from forbidden for other users' rows).
+
+**Lifecycle (Phase 11A).** ``ended_at IS NULL`` — nothing else — means "in progress".
+There is deliberately **no date arithmetic** here: the old "is ``performed_at`` today?"
+heuristic ran in the server's timezone (UTC in production), so a 5 pm session in UTC−8
+was already "tomorrow" and a finished morning workout still read "in progress" at 11 pm.
+Dangling sessions are retired lazily on read — see :func:`get_active_session`.
 """
 
 from __future__ import annotations
@@ -9,7 +16,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import delete as sa_delete
@@ -21,6 +28,11 @@ from app.models import Exercise, ExerciseSet, WorkoutSession
 
 # Fields a PATCH may change (values are already Pydantic-validated by the router).
 _UPDATABLE = frozenset({"title", "type", "notes", "duration_minutes", "performed_at"})
+
+# How long a session may sit untouched before a read considers it abandoned (D31). Chosen so
+# it can never fire mid-workout (no session runs 12 h) but a forgotten one can't survive a
+# night's sleep and swallow tomorrow's training.
+STALE_AFTER = timedelta(hours=12)
 
 
 @dataclass(frozen=True)
@@ -153,3 +165,85 @@ async def delete(db: AsyncSession, *, user_id: uuid.UUID, session_id: uuid.UUID)
     await _owned(db, user_id, session_id)
     await db.execute(sa_delete(WorkoutSession).where(WorkoutSession.id == session_id))
     await db.flush()
+
+
+# ── Lifecycle ────────────────────────────────────────────────────────────────────────
+def _duration_minutes(performed_at: datetime, ended_at: datetime) -> int:
+    """Whole minutes between start and end, never negative (a clock skew must not go < 0)."""
+    return max(0, round((ended_at - performed_at).total_seconds() / 60))
+
+
+async def _last_activity(db: AsyncSession, session: WorkoutSession) -> datetime:
+    """When the session was last touched: its newest set, or its start if it has none."""
+    newest = (
+        await db.execute(
+            select(func.max(ExerciseSet.created_at)).where(ExerciseSet.session_id == session.id)
+        )
+    ).scalar_one_or_none()
+    if newest is None:
+        return session.performed_at
+    return max(newest, session.performed_at)
+
+
+async def _stamp_finished(
+    db: AsyncSession, session: WorkoutSession, ended_at: datetime
+) -> WorkoutSession:
+    session.ended_at = ended_at
+    session.duration_minutes = _duration_minutes(session.performed_at, ended_at)
+    await db.flush()
+    await db.refresh(session)
+    return session
+
+
+async def finish_session(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    session_id: uuid.UUID,
+    ended_at: datetime | None = None,
+) -> WorkoutSession:
+    """Close a session: stamp ``ended_at`` and store the derived ``duration_minutes``.
+
+    **Idempotent** — finishing an already-finished session returns it untouched rather than
+    raising, so a double-tap (or a retried offline write) is harmless. Cross-user scoping is
+    the same as everywhere else: someone else's session is ``not_found``.
+    """
+    session = await _owned(db, user_id, session_id)
+    if session.ended_at is not None:
+        return session
+    return await _stamp_finished(db, session, ended_at or datetime.now(tz=UTC))
+
+
+async def get_active_session(
+    db: AsyncSession, *, user_id: uuid.UUID, now: datetime | None = None
+) -> WorkoutSession | None:
+    """The user's in-progress session, or ``None``.
+
+    "In progress" is ``ended_at IS NULL`` — no timezone, no date comparison. Sessions left
+    open are retired here rather than by a background job (there is none on Fluid Compute):
+    any open session untouched for :data:`STALE_AFTER` is finished as of its **last
+    activity** (newest set, else its start), so the duration reflects the training that
+    happened and not the hours it sat forgotten. The newest still-live session is returned
+    (D31).
+    """
+    at = now or datetime.now(tz=UTC)
+    open_sessions = (
+        (
+            await db.execute(
+                select(WorkoutSession)
+                .where(WorkoutSession.user_id == user_id, WorkoutSession.ended_at.is_(None))
+                .order_by(WorkoutSession.performed_at.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    active: WorkoutSession | None = None
+    for session in open_sessions:
+        touched = await _last_activity(db, session)
+        if at - touched > STALE_AFTER:
+            await _stamp_finished(db, session, touched)
+        elif active is None:
+            active = session
+    return active

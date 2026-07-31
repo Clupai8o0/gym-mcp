@@ -25,6 +25,10 @@ class WorkoutSession(Base):
     title: Mapped[str | None] = mapped_column(Text)
     type: Mapped[str | None] = mapped_column(Text)
     performed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # NULL = never finished. This — not a date comparison — is what makes a session "active"
+    # (services/sessions.get_active_session); `performed_at` is when it started, and a
+    # server-side "is it today?" would evaluate in the server's timezone, not the lifter's.
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     notes: Mapped[str | None] = mapped_column(Text)
     duration_minutes: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = created_at_col()

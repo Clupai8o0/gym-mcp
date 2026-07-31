@@ -56,3 +56,12 @@
   display: flex;
   justify-content: center;
 }
+
+/* Ending the workout is a separate decision from adding to it — a divider keeps the two apart
+ * so "Finish" is never the button under a mistimed thumb. */
+.finishBar {
+  display: flex;
+  justify-content: center;
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--border);
+}

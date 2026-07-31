@@ -139,6 +139,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sessions/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Active Session
+         * @description The in-progress session, or `null`. May finish sessions abandoned >12 h (see the service).
+         */
+        get: operations["get_active_session_api_sessions_active_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sessions/{session_id}": {
         parameters: {
             query?: never;
@@ -156,6 +176,26 @@ export interface paths {
         head?: never;
         /** Update Session */
         patch: operations["update_session_api_sessions__session_id__patch"];
+        trace?: never;
+    };
+    "/api/sessions/{session_id}/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finish Session
+         * @description Close a session and store its duration. Idempotent — finishing a finished one is a no-op.
+         */
+        post: operations["finish_session_api_sessions__session_id__finish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/sessions/{session_id}/sets": {
@@ -512,6 +552,16 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * ActiveSessionOut
+         * @description The user's in-progress session, or ``null`` when they aren't training.
+         *
+         *     Wrapped rather than returned bare so "no active session" is an ordinary 200 with a
+         *     typed, nullable field — clients poll this on every screen and a 404 would be noise.
+         */
+        ActiveSessionOut: {
+            session: components["schemas"]["SessionOut"] | null;
+        };
         /**
          * AuthorizationServerMetadata
          * @description RFC 8414 AS metadata (``/.well-known/oauth-authorization-server``).
@@ -914,6 +964,8 @@ export interface components {
              * Format: date-time
              */
             performed_at: string;
+            /** Ended At */
+            ended_at: string | null;
             /** Notes */
             notes: string | null;
             /** Duration Minutes */
@@ -953,6 +1005,8 @@ export interface components {
              * Format: date-time
              */
             performed_at: string;
+            /** Ended At */
+            ended_at: string | null;
             /** Notes */
             notes: string | null;
             /** Duration Minutes */
@@ -1489,6 +1543,26 @@ export interface operations {
             };
         };
     };
+    get_active_session_api_sessions_active_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActiveSessionOut"];
+                };
+            };
+        };
+    };
     get_session_api_sessions__session_id__get: {
         parameters: {
             query?: never;
@@ -1563,6 +1637,37 @@ export interface operations {
                 "application/json": components["schemas"]["SessionUpdate"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    finish_session_api_sessions__session_id__finish_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

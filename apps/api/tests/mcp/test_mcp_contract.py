@@ -112,6 +112,16 @@ async def test_get_session_matches_rest(
     assert mcp == rest
 
 
+async def test_get_active_session_matches_rest(
+    app_client: AsyncClient, db_session: AsyncSession, seeded: dict[str, Any]
+) -> None:
+    rest = await _rest(app_client, "/api/sessions/active")
+    with bound(db_session, seeded["user_id"]):
+        mcp = await server.get_active_session()
+    assert mcp == rest
+    assert mcp["session"]["id"] == str(seeded["session_id"])
+
+
 async def test_get_prs_matches_rest(
     app_client: AsyncClient, db_session: AsyncSession, seeded: dict[str, Any]
 ) -> None:
@@ -176,6 +186,19 @@ async def test_log_session_then_rest_reads_it(
         )
     rest = await _rest(app_client, f"/api/sessions/{created['id']}")
     assert {k: rest[k] for k in created} == created  # every field the MCP write returned matches
+
+
+async def test_finish_session_then_rest_reads_it(
+    app_client: AsyncClient, db_session: AsyncSession, seeded: dict[str, Any]
+) -> None:
+    with bound(db_session, seeded["user_id"]):
+        finished = await server.finish_session(session_id=seeded["session_id"])
+    assert finished["ended_at"] is not None and finished["duration_minutes"] is not None
+
+    rest = await _rest(app_client, f"/api/sessions/{seeded['session_id']}")
+    assert {k: rest[k] for k in finished} == finished
+    # …and the REST view of "active" agrees the workout is over.
+    assert (await _rest(app_client, "/api/sessions/active"))["session"] is None
 
 
 async def test_create_custom_exercise_then_rest_reads_it(

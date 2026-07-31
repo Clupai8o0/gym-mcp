@@ -5,17 +5,14 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { Button } from "@/components/ui";
 import { FadeIn } from "@/components/motion/FadeIn";
-import {
-  ClientApiError,
-  deleteSet as apiDeleteSet,
-  getExerciseBySlug,
-} from "@/lib/client";
+import { ClientApiError, deleteSet as apiDeleteSet, getExerciseBySlug } from "@/lib/client";
 import { useOfflineQueue } from "@/lib/offline/useOfflineQueue";
 import { removeQueuedSet } from "@/lib/offline/queue";
 import { formatRelativeDate, formatTime } from "@/lib/format";
 import type { Exercise, LoggedSet, SessionDetail, SetCreate, UnitPref } from "@/lib/types";
 import { ExerciseBlock } from "./ExerciseBlock";
 import { ExercisePicker } from "./ExercisePicker";
+import { FinishWorkout } from "./FinishWorkout";
 import { RestTimer } from "./RestTimer";
 import { SyncStatus } from "./SyncStatus";
 import type { LogGroup, LogSet, SetDraft } from "./types";
@@ -33,22 +30,20 @@ const CELEBRATE_MS = 900;
 function seedGroups(session: SessionDetail): LogGroup[] {
   return session.exercises.map((group) => ({
     exercise: group.exercise,
-    sets: group.sets.map(
-      (s): LogSet => ({
-        clientId: s.id,
-        serverId: s.id,
-        setNumber: s.set_number,
-        weightKg: s.weight_kg,
-        reps: s.reps,
-        holdSeconds: s.hold_seconds,
-        rpe: s.rpe,
-        status: "saved",
-        isPr: s.is_pr,
-        prType: s.pr_type,
-        prValue: null,
-        prUnit: null,
-      }),
-    ),
+    sets: group.sets.map((s): LogSet => ({
+      clientId: s.id,
+      serverId: s.id,
+      setNumber: s.set_number,
+      weightKg: s.weight_kg,
+      reps: s.reps,
+      holdSeconds: s.hold_seconds,
+      rpe: s.rpe,
+      status: "saved",
+      isPr: s.is_pr,
+      prType: s.pr_type,
+      prValue: null,
+      prUnit: null,
+    })),
   }));
 }
 
@@ -99,7 +94,9 @@ export function SessionLogger({ session, unitPref }: SessionLoggerProps) {
   }, []);
 
   const dropSet = useCallback((clientId: string) => {
-    setGroups((gs) => gs.map((g) => ({ ...g, sets: g.sets.filter((s) => s.clientId !== clientId) })));
+    setGroups((gs) =>
+      gs.map((g) => ({ ...g, sets: g.sets.filter((s) => s.clientId !== clientId) })),
+    );
   }, []);
 
   const celebrate = useCallback((clientId: string) => {
@@ -108,9 +105,12 @@ export function SessionLogger({ session, unitPref }: SessionLoggerProps) {
     celebrateTimer.current = setTimeout(() => setCelebrateId(null), CELEBRATE_MS);
   }, []);
 
-  useEffect(() => () => {
-    if (celebrateTimer.current) clearTimeout(celebrateTimer.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (celebrateTimer.current) clearTimeout(celebrateTimer.current);
+    },
+    [],
+  );
 
   const applyLogged = useCallback(
     (clientId: string, logged: LoggedSet) => {
@@ -192,9 +192,7 @@ export function SessionLogger({ session, unitPref }: SessionLoggerProps) {
         prUnit: null,
       };
       setGroups((gs) =>
-        gs.map((g) =>
-          g.exercise.id === exerciseId ? { ...g, sets: [...g.sets, optimistic] } : g,
-        ),
+        gs.map((g) => (g.exercise.id === exerciseId ? { ...g, sets: [...g.sets, optimistic] } : g)),
       );
       setRestKey((k) => k + 1);
       setRestActive(true);
@@ -298,6 +296,15 @@ export function SessionLogger({ session, unitPref }: SessionLoggerProps) {
         <Button variant={hasExercises ? "outline" : "primary"} onClick={() => setPickerOpen(true)}>
           + Add exercise
         </Button>
+      </div>
+
+      <div className={styles.finishBar}>
+        <FinishWorkout
+          sessionId={session.id}
+          endedAt={session.ended_at}
+          durationMinutes={session.duration_minutes}
+          pending={pending}
+        />
       </div>
 
       <ExercisePicker

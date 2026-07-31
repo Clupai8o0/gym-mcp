@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser, Pagination, current_user, get_db, pagination
 from app.schemas.sessions import (
+    ActiveSessionOut,
     SessionCreate,
     SessionDetailOut,
     SessionListOut,
@@ -58,6 +59,17 @@ async def create_session(
     return SessionOut.model_validate(session)
 
 
+# Declared before "/{session_id}" so the literal wins — otherwise "active" is parsed as a UUID.
+@router.get("/active", response_model=ActiveSessionOut)
+async def get_active_session(
+    cu: CurrentUser = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ActiveSessionOut:
+    """The in-progress session, or `null`. May finish sessions abandoned >12 h (see the service)."""
+    session = await sessions.get_active_session(db, user_id=cu.user_id)
+    return ActiveSessionOut(session=SessionOut.model_validate(session) if session else None)
+
+
 @router.get("/{session_id}", response_model=SessionDetailOut)
 async def get_session(
     session_id: uuid.UUID,
@@ -92,6 +104,17 @@ async def delete_session(
 ) -> Response:
     await sessions.delete(db, user_id=cu.user_id, session_id=session_id)
     return Response(status_code=204)
+
+
+@router.post("/{session_id}/finish", response_model=SessionOut)
+async def finish_session(
+    session_id: uuid.UUID,
+    cu: CurrentUser = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+) -> SessionOut:
+    """Close a session and store its duration. Idempotent — finishing a finished one is a no-op."""
+    session = await sessions.finish_session(db, user_id=cu.user_id, session_id=session_id)
+    return SessionOut.model_validate(session)
 
 
 @router.post("/{session_id}/sets", response_model=LoggedSetOut, status_code=201)

@@ -106,7 +106,9 @@ via `?limit=&offset=` (default limit 50, max 100). All list endpoints are user-s
 | `POST /api/exercises/{id}/illustration` | `images.ensure` | Triggers on-demand generation if missing |
 | `GET /api/sessions` | `sessions.list` | Filters: `type`, `from`, `to` |
 | `POST /api/sessions` | `sessions.create` | |
+| `GET /api/sessions/active` | `sessions.get_active_session` | In-progress session or `null` (Phase 11A; declared before `/{id}`) |
 | `GET /api/sessions/{id}` | `sessions.get` | Session + sets grouped by exercise |
+| `POST /api/sessions/{id}/finish` | `sessions.finish_session` | Stamp `ended_at` + duration; idempotent (Phase 11A) |
 | `PATCH /api/sessions/{id}` | `sessions.update` | title/type/notes/duration |
 | `DELETE /api/sessions/{id}` | `sessions.delete` | Cascades sets |
 | `POST /api/sessions/{id}/sets` | `sets.log_set` | Auto PR detection |
