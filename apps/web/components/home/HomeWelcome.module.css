@@ -20,3 +20,19 @@
   gap: var(--space-3);
   margin-top: var(--space-2);
 }
+
+@media (min-width: 768px) {
+  .card {
+    gap: var(--space-4);
+    padding: var(--space-10);
+    border-radius: var(--radius-xl);
+  }
+
+  .title {
+    font-size: var(--text-3xl);
+  }
+
+  .lede {
+    font-size: var(--text-base);
+  }
+}

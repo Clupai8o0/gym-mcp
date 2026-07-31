@@ -72,3 +72,34 @@
   color: var(--accent);
   font-size: var(--text-sm);
 }
+
+/* Desktop: the hero of the page — it spans the full width, so let it carry the weight. */
+@media (min-width: 768px) {
+  .idle,
+  .active {
+    gap: var(--space-6);
+    padding: var(--space-6) var(--space-8);
+    border-radius: var(--radius-xl);
+  }
+
+  .idleText,
+  .activeText {
+    gap: var(--space-2);
+  }
+
+  .idleTitle {
+    font-size: var(--text-xl);
+  }
+
+  .activeTitle {
+    font-size: var(--text-2xl);
+  }
+
+  .activeMeta {
+    font-size: var(--text-base);
+  }
+
+  .cta {
+    font-size: var(--text-base);
+  }
+}

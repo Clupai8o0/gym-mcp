@@ -826,3 +826,37 @@ Not required for Phase 0. Track here so they don't become surprise blockers:
 - **Notes / decisions:** logged **D34** in `01` (and it supersedes D27's claim about cached
   authed data). No new dependency, no new env, no migration.
 
+## Phase 11E — Desktop home is one layout, not two — DONE (built + self-verified; **Antigravity frontend-review gate outstanding**)
+- **Branch/PR:** `phase-11e-desktop-home` (cut from `phase-11d-pwa-cache` HEAD; committed locally,
+  push + PR pending human go-ahead). **Follow-up to 11C on review feedback**, not new scope.
+- **The problem.** 11C put the phone summary in a fixed 24rem column and the `/progress/*` panels
+  in a second column beside it. Because the summary kept mobile-scale type and padding while the
+  panels were desktop-scale, the two read as **two applications side by side**, with a seam down
+  the middle and dead space under the short column.
+- **Scope (shipped) — pure CSS + one composition change; no new components, no data change:**
+  - **The two containers are gone.** `.summary`/`.wide` were removed and every block — header,
+    workout card, stats, strip, highlights, and the three progress panels — is now a direct child
+    of **one grid**. Below 768px it is a flex column with the panels hidden (unchanged phone
+    behaviour); at 768–1023px one full-width column; at ≥1024px a **12-column dashboard**:
+    header/workout/stats span 12, day strip 4, highlights 8, volume 7, frequency 5, records 12.
+  - **The range control moved into the page masthead** (a new `action` slot on `HomeHeader`,
+    hidden below 768px), so the "Progress" super-heading that used to label the second column is
+    gone — the panel headings carry it.
+  - **Everything scales up together at ≥768px**, so one card language runs the whole page: stat
+    values `--text-base` → `--text-3xl` in `--radius-xl` tiles, workout card title → `--text-2xl`
+    with `--space-8` padding, day-strip cells 1.75rem → 3.25rem (and they stretch to fill their
+    grid row, so the week reads as a bar chart), highlight rows to `--text-lg` in matching cards,
+    header title → `--text-3xl` over a hairline rule.
+  - Highlight rows stay **stacked** at every width — an exercise name needs the width more than
+    the row needs a partner ("Barbell Ben…" truncated when they were two-up).
+- **DoD evidence:**
+  - Screenshotted at **1500, 1400, 1100, 850 and 393px**, light and dark: one continuous grid at
+    every width, no seam, no dead column, no truncated PR name. Empty state checked at 1400px too.
+  - **Phone budget untouched:** `/dashboard` still measures `scrollHeight === clientHeight === 690`
+    at 393px **with the docked session bar** — every change is inside a `min-width` query.
+  - Full route sweep at 393×690 and 1500×900 (dark): **zero console errors, zero hydration
+    warnings** on all nine authed routes. `next build`, `eslint .`, `tsc --noEmit`, Prettier clean.
+    API untouched → **209 passed**.
+- **Notes / decisions:** extends **D33** rather than replacing it — the mobile split stands; what
+  changed is that desktop no longer *composes* the two halves side by side, it *merges* them into
+  one grid. No decision-log entry.

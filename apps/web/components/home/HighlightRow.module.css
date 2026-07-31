@@ -60,3 +60,24 @@
   color: var(--text-muted);
   font-size: var(--text-sm);
 }
+
+/* Desktop: matches the card scale of the panels beside it. */
+@media (min-width: 768px) {
+  .row {
+    gap: var(--space-4);
+    padding: var(--space-5) var(--space-6);
+    border-radius: var(--radius-xl);
+  }
+
+  .title {
+    font-size: var(--text-lg);
+  }
+
+  .value {
+    font-size: var(--text-lg);
+  }
+
+  .meta {
+    font-size: var(--text-sm);
+  }
+}

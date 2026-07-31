@@ -46,3 +46,38 @@
   font-size: var(--text-xs);
   letter-spacing: var(--tracking-normal);
 }
+
+/* Desktop: taller cells so the week reads as a chart rather than a row of chips. */
+@media (min-width: 768px) {
+  .strip {
+    gap: var(--space-3);
+    padding: var(--space-5);
+    border-radius: var(--radius-xl);
+  }
+
+  .cell {
+    height: 3.25rem;
+    border-radius: var(--radius-md);
+  }
+
+  .initial {
+    font-size: var(--text-sm);
+  }
+}
+
+/* Beside the highlight rows it shares a grid row, so the bars grow to whatever height that is. */
+@media (min-width: 1024px) {
+  .strip {
+    flex: 1;
+  }
+
+  .day {
+    justify-content: flex-end;
+  }
+
+  .cell {
+    flex: 1;
+    min-height: 3.25rem;
+    height: auto;
+  }
+}

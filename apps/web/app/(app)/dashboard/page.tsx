@@ -103,7 +103,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   if (isNewAccount) {
     const catalog = await listExercises({ limit: 1 });
     return (
-      <div className={styles.page}>
+      <div className={styles.welcomePage}>
         <HomeHeader me={me} now={nowIso} />
         <HomeWelcome exerciseCount={catalog.total} />
       </div>
@@ -123,11 +123,13 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
 
   return (
     <div className={styles.page}>
-      <div className={styles.summary}>
-        <HomeHeader me={me} now={nowIso} />
+      <HomeHeader me={me} now={nowIso} action={<RangeControl current={range.key} />} />
 
+      <div className={styles.workout}>
         <WorkoutCard active={active} setCount={setCount} />
+      </div>
 
+      <div className={styles.stats}>
         <WeekStats
           sessions={weekSessions.length}
           tonnageKg={weekTonnage}
@@ -135,95 +137,97 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           prs={weekPrs}
           unit={unit}
         />
+      </div>
 
+      <div className={styles.strip}>
         <DayStrip sessionDates={recent.items.map((session) => session.performed_at)} now={nowIso} />
-
-        <div className={styles.highlights}>
-          {pr ? (
-            <HighlightRow
-              eyebrow="Latest PR"
-              title={pr.exercise_name}
-              value={formatPrValue(pr.value, pr.unit === "kg" ? unit : pr.unit)}
-              meta={
-                <>
-                  {prTypeLabel(pr.pr_type)} · <LocalTime iso={pr.achieved_at} format="relative" />
-                </>
-              }
-              href="/progress/records"
-            />
-          ) : (
-            <HighlightRow
-              eyebrow="Latest PR"
-              title="No records yet"
-              value="—"
-              href="/progress/records"
-            />
-          )}
-
-          {skill ? (
-            <HighlightRow
-              eyebrow="Top skill"
-              title={skill.name}
-              value={`${skill.progress_percent}%`}
-              meta={`Stage ${skill.current_stage} of ${skill.total_stages}`}
-              href="/progress/skills"
-            />
-          ) : (
-            <HighlightRow
-              eyebrow="Top skill"
-              title="Pick a skill to train"
-              value="—"
-              href="/progress/skills"
-            />
-          )}
-        </div>
       </div>
 
-      {/* ≥768px only: the `/progress/*` screens, inline. Hidden (not fetched away) on mobile. */}
-      <div className={styles.wide}>
-        <div className={styles.wideHead}>
-          <h2 className={styles.wideTitle}>Progress</h2>
-          <RangeControl current={range.key} />
-        </div>
+      <div className={styles.highlights}>
+        {pr ? (
+          <HighlightRow
+            eyebrow="Latest PR"
+            title={pr.exercise_name}
+            value={formatPrValue(pr.value, pr.unit === "kg" ? unit : pr.unit)}
+            meta={
+              <>
+                {prTypeLabel(pr.pr_type)} · <LocalTime iso={pr.achieved_at} format="relative" />
+              </>
+            }
+            href="/progress/records"
+          />
+        ) : (
+          <HighlightRow
+            eyebrow="Latest PR"
+            title="No records yet"
+            value="—"
+            href="/progress/records"
+          />
+        )}
 
-        <section className={styles.section} aria-labelledby="volume-heading">
-          <div className={styles.sectionHead}>
-            <h3 id="volume-heading" className={styles.sectionTitle}>
-              <Link href="/progress/volume">Volume</Link>
-            </h3>
-            <span className={styles.sectionMeta}>Last {range.label}</span>
-          </div>
-          {rangeVolume.items.length > 0 ? (
-            <VolumeChart volume={rangeVolume} unit={unit} />
-          ) : (
-            <p className={styles.empty}>No sets logged in this range yet.</p>
-          )}
-        </section>
-
-        <section className={styles.section} aria-labelledby="frequency-heading">
-          <div className={styles.sectionHead}>
-            <h3 id="frequency-heading" className={styles.sectionTitle}>
-              <Link href="/progress/frequency">Frequency</Link>
-            </h3>
-            <span className={styles.sectionMeta}>Last {range.weeks} weeks</span>
-          </div>
-          <FrequencyHeatmap frequency={frequency} />
-        </section>
-
-        <section className={styles.section} aria-labelledby="records-heading">
-          <div className={styles.sectionHead}>
-            <h3 id="records-heading" className={styles.sectionTitle}>
-              <Link href="/progress/records">Records</Link>
-            </h3>
-            <span className={styles.sectionMeta}>All-time</span>
-          </div>
-          {prs.items.length > 0 ? (
-            <PrList prs={prs.items} unit={unit} />
-          ) : (
-            <p className={styles.empty}>No personal records yet.</p>
-          )}
-        </section>
+        {skill ? (
+          <HighlightRow
+            eyebrow="Top skill"
+            title={skill.name}
+            value={`${skill.progress_percent}%`}
+            meta={`Stage ${skill.current_stage} of ${skill.total_stages}`}
+            href="/progress/skills"
+          />
+        ) : (
+          <HighlightRow
+            eyebrow="Top skill"
+            title="Pick a skill to train"
+            value="—"
+            href="/progress/skills"
+          />
+        )}
       </div>
+
+      {/*
+       * From 768px up the vertical budget that forced the split doesn't exist, so the
+       * `/progress/*` screens render inline as further panels of this same grid — one page,
+       * one card language, no seam between a phone column and a desktop one.
+       */}
+      <section className={`${styles.panel} ${styles.volume}`} aria-labelledby="volume-heading">
+        <div className={styles.panelHead}>
+          <h2 id="volume-heading" className={styles.panelTitle}>
+            <Link href="/progress/volume">Volume</Link>
+          </h2>
+          <span className={styles.panelMeta}>Last {range.label}</span>
+        </div>
+        {rangeVolume.items.length > 0 ? (
+          <VolumeChart volume={rangeVolume} unit={unit} />
+        ) : (
+          <p className={styles.empty}>No sets logged in this range yet.</p>
+        )}
+      </section>
+
+      <section
+        className={`${styles.panel} ${styles.frequency}`}
+        aria-labelledby="frequency-heading"
+      >
+        <div className={styles.panelHead}>
+          <h2 id="frequency-heading" className={styles.panelTitle}>
+            <Link href="/progress/frequency">Frequency</Link>
+          </h2>
+          <span className={styles.panelMeta}>Last {range.weeks} weeks</span>
+        </div>
+        <FrequencyHeatmap frequency={frequency} />
+      </section>
+
+      <section className={`${styles.panel} ${styles.records}`} aria-labelledby="records-heading">
+        <div className={styles.panelHead}>
+          <h2 id="records-heading" className={styles.panelTitle}>
+            <Link href="/progress/records">Records</Link>
+          </h2>
+          <span className={styles.panelMeta}>All-time</span>
+        </div>
+        {prs.items.length > 0 ? (
+          <PrList prs={prs.items} unit={unit} />
+        ) : (
+          <p className={styles.empty}>No personal records yet.</p>
+        )}
+      </section>
     </div>
   );
 }

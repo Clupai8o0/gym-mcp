@@ -16,6 +16,18 @@
   font-size: var(--text-2xl);
 }
 
+.actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+/* The range control only belongs here once there are progress panels on the page to govern. */
+.action {
+  display: none;
+}
+
 .avatarLink {
   flex: none;
   display: inline-flex;
@@ -38,4 +50,31 @@
   border: 1px solid var(--border);
   color: var(--text-secondary);
   font-size: var(--text-sm);
+}
+
+/* Desktop: this is the page masthead, not a compact phone title row. */
+@media (min-width: 768px) {
+  .head {
+    align-items: flex-end;
+    padding-bottom: var(--space-2);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .title {
+    font-size: var(--text-3xl);
+  }
+
+  .action {
+    display: block;
+  }
+
+  .avatar,
+  .initials {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+
+  .initials {
+    font-size: var(--text-base);
+  }
 }

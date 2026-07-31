@@ -1,19 +1,26 @@
 /*
- * Home. The governing constraint is one phone screen with no scrolling (~690px in mobile Safari),
- * so the summary column is deliberately six short blocks and nothing more. Above 768px that
- * constraint evaporates and the `/progress/*` content renders inline beside it.
+ * Home.
+ *
+ * On a phone the governing constraint is one screen with no scrolling (~690px in mobile Safari),
+ * so the page is six short blocks and the `/progress/*` panels are hidden — they are separate
+ * destinations, reached from the tiles.
+ *
+ * From 768px that constraint is gone and those panels join the page. They are **not** a second
+ * layout bolted beside the phone one: every block is a child of the same grid, sharing one card
+ * language and one type scale, which simply gets bigger. A narrow mobile column next to a wide
+ * desktop panel reads as two apps.
  */
 .page {
   display: flex;
   flex-direction: column;
-  gap: var(--space-8);
-}
-
-.summary {
-  display: flex;
-  flex-direction: column;
   /* Tight on purpose: home must clear the tab bar *and* a docked session bar inside ~690px. */
   gap: var(--space-3);
+}
+
+.welcomePage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
 }
 
 .highlights {
@@ -22,34 +29,28 @@
   gap: var(--space-2);
 }
 
-/* Below 768px the progress sections are separate destinations, reached from the tiles above. */
-.wide {
+/* Below 768px the progress panels are separate destinations, reached from the tiles above. */
+.panel {
   display: none;
 }
 
-.section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-.sectionHead {
+.panelHead {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: var(--space-3);
 }
 
-.sectionTitle {
-  font-size: var(--text-lg);
+.panelTitle {
+  font-size: var(--text-xl);
   letter-spacing: var(--tracking-tight);
 }
 
-.sectionTitle a:hover {
+.panelTitle a:hover {
   color: var(--accent);
 }
 
-.sectionMeta {
+.panelMeta {
   color: var(--text-muted);
   font-size: var(--text-sm);
 }
@@ -64,39 +65,56 @@
   border-radius: var(--radius-md);
 }
 
-@media (min-width: 1024px) {
-  .page {
-    display: grid;
-    grid-template-columns: minmax(18rem, 24rem) minmax(0, 1fr);
-    gap: var(--space-10);
-    align-items: start;
-  }
-
-  .summary {
-    position: sticky;
-    top: var(--space-10);
-    gap: var(--space-5);
-  }
-}
-
-/* From 768px the vertical budget that forced the split is gone — show the progress content
- * inline. Between 768 and 1024 it stacks under the summary rather than crushing two columns. */
+/* ── Tablet: one column, everything on the page, desktop scale ──────────────────────── */
 @media (min-width: 768px) {
-  .wide {
-    display: flex;
-    flex-direction: column;
+  .page {
     gap: var(--space-8);
   }
 
-  .wideHead {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-4);
-    flex-wrap: wrap;
+  .highlights {
+    gap: var(--space-3);
   }
 
-  .wideTitle {
-    font-size: var(--text-2xl);
+  .panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  .welcomePage {
+    gap: var(--space-8);
+  }
+}
+
+/* ── Desktop: one 12-column dashboard. Same blocks, arranged rather than stacked. ────── */
+@media (min-width: 1024px) {
+  .page {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: var(--space-8) var(--space-6);
+    align-content: start;
+  }
+
+  .page > * {
+    grid-column: span 12;
+  }
+
+  .strip {
+    grid-column: span 4;
+    /* Let the strip fill the row its neighbours set, instead of leaving a hole beneath it. */
+    display: flex;
+  }
+
+  /* Stacked, not side by side: an exercise name needs the width more than the row needs a partner. */
+  .highlights {
+    grid-column: span 8;
+  }
+
+  .volume {
+    grid-column: span 7;
+  }
+
+  .frequency {
+    grid-column: span 5;
   }
 }
