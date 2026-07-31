@@ -598,6 +598,8 @@ Not required for Phase 0. Track here so they don't become surprise blockers:
   sliding tab indicator (motion audit #7), since that would reintroduce `motion` to every authed page's
   initial bundle, undoing the perf work; the snap indicators stay. New web deps: **none** (sharp for the
   icon script is transitive via Next). No new env, **no migration**.
+## Phase 10 — Deploy & launch — NOT STARTED
+
 ## Phase 11A — Session lifecycle — DONE (verified on local Postgres)
 - **Branch/PR:** `phase-11a-session-lifecycle` (cut from `phase-9-polish` HEAD, since Phase 9 is not
   yet merged to `main`; committed locally, push + PR pending human go-ahead).
@@ -824,4 +826,3 @@ Not required for Phase 0. Track here so they don't become surprise blockers:
 - **Notes / decisions:** logged **D34** in `01` (and it supersedes D27's claim about cached
   authed data). No new dependency, no new env, no migration.
 
-## Phase 10 — Deploy & launch — NOT STARTED
