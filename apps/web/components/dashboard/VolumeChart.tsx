@@ -40,7 +40,7 @@ export function VolumeChart({ volume, unit }: { volume: Volume; unit: UnitPref }
       </dl>
 
       <ul className={styles.bars}>
-        {top.map((item) => {
+        {top.map((item, index) => {
           const width = `${Math.max(4, Math.round((item.total_sets / maxSets) * 100))}%`;
           return (
             <li key={item.exercise_id} className={styles.row}>
@@ -48,7 +48,11 @@ export function VolumeChart({ volume, unit }: { volume: Volume; unit: UnitPref }
                 {item.exercise_name}
               </span>
               <span className={styles.track} aria-hidden>
-                <span className={styles.fill} style={{ width }} />
+                <span
+                  className={`${styles.fill} grow-x`}
+                  // Ranked bars extend in rank order, 26ms apart (docs/08 §8).
+                  style={{ width, "--enter-delay": `${index * 26}ms` } as React.CSSProperties}
+                />
               </span>
               <span className={`${styles.rowValue} tnum`}>
                 {item.total_sets}

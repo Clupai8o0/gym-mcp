@@ -1,9 +1,10 @@
-import { OfflineIndicator } from "@/components/app/OfflineIndicator";
+import { cookies } from "next/headers";
+
+import { AppShell } from "@/components/app/AppShell";
 import { SessionBar } from "@/components/app/SessionBar";
-import { TabBar } from "@/components/app/TabBar";
 import { getActiveSession, getSession } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
-import styles from "./layout.module.css";
+import { RAIL_COLLAPSED, RAIL_COOKIE } from "@/lib/rail";
 
 /**
  * Authenticated shell (docs/07, rebuilt mobile-first in Phase 11B). Resolves the session
@@ -11,8 +12,9 @@ import styles from "./layout.module.css";
  * signed-out users.
  *
  * There is no top bar. Navigation lives at the bottom of the screen inside the thumb arc (a
- * left rail from 768px up), each screen carries its own title row that scrolls away with the
- * content, and the docked `SessionBar` keeps a live workout one tap away from every route.
+ * collapsible left rail from 768px up), each screen carries its own title row that scrolls away
+ * with the content, and the docked `SessionBar` keeps a live workout one tap away from every
+ * route. This half does the data work; `AppShell` owns the interactive chrome state.
  */
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   await requireUser();
@@ -25,31 +27,25 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     ? detail.exercises.reduce((total, group) => total + group.sets.length, 0)
     : 0;
 
+  // Read server-side so the rail is already the right width on the first paint (lib/rail).
+  const railCollapsed = (await cookies()).get(RAIL_COOKIE)?.value === RAIL_COLLAPSED;
+
   return (
-    <div className={styles.shell} data-session={active ? "true" : undefined}>
-      <a href="#main" className={styles.skipLink}>
-        Skip to content
-      </a>
-
-      <TabBar sessionActive={Boolean(active)} />
-
-      <main id="main" tabIndex={-1} className={styles.main}>
-        {children}
-      </main>
-
-      <div className={styles.dock}>
-        <div className={styles.dockChip}>
-          <OfflineIndicator />
-        </div>
-        {active && (
+    <AppShell
+      sessionActive={Boolean(active)}
+      railCollapsed={railCollapsed}
+      sessionBar={
+        active ? (
           <SessionBar
             sessionId={active.id}
             title={active.title}
             setCount={setCount}
             startedAt={active.performed_at}
           />
-        )}
-      </div>
-    </div>
+        ) : null
+      }
+    >
+      {children}
+    </AppShell>
   );
 }

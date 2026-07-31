@@ -1,11 +1,16 @@
 /*
- * Bottom tab bar (<768px) / left rail (>=768px) — one component, two compositions.
+ * Bottom tab bar (<768px) / collapsible left rail (>=768px) — one component, two compositions.
  * Fixed on both, so the primary navigation is reachable without scrolling on every route.
+ *
+ * Motion here is all `transform`/`opacity` at 100–200ms (docs/08 §2–4): a sliding active
+ * indicator, a press scale, a label cross-fade on collapse. The rail's own width is the one
+ * layout transition in the app, and it is a deliberate exception (D35).
  */
 .bar {
   position: fixed;
   inset: auto 0 0 0;
   z-index: 60;
+  isolation: isolate;
   display: flex;
   flex-direction: column;
   background-color: color-mix(in srgb, var(--bg) 88%, transparent);
@@ -15,8 +20,8 @@
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-/* The wordmark belongs to the desktop rail; on mobile the app icon is the brand. */
-.brand {
+/* The wordmark and the collapse control belong to the desktop rail. */
+.railHead {
   display: none;
 }
 
@@ -34,6 +39,7 @@
 }
 
 .tab {
+  position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -50,8 +56,12 @@
   color: var(--text-secondary);
 }
 
+.tab:hover .iconWrap {
+  transform: translateY(-1px);
+}
+
 .tab:active .iconWrap {
-  transform: scale(var(--press-scale));
+  transform: scale(var(--press-scale-strong));
 }
 
 .active {
@@ -61,6 +71,26 @@
 /* A live session recolours Log outright — it is a state, not a place. */
 .live {
   color: var(--accent);
+}
+
+/*
+ * The active marker: a hairline that scales in from the tab's own edge. Pure CSS, so no
+ * `motion` `layoutId` and no library in the shell bundle (D30c) — it grows in place rather
+ * than sliding between tabs, which is honest about the fact that the page also changed.
+ */
+.indicator {
+  position: absolute;
+  inset: 0 var(--space-4) auto var(--space-4);
+  height: 2px;
+  border-radius: var(--radius-full);
+  background-color: currentColor;
+  transform: scaleX(0);
+  transform-origin: center;
+  transition: transform var(--dur-base) var(--ease-out);
+}
+
+.active .indicator {
+  transform: scaleX(1);
 }
 
 .iconWrap {
@@ -100,13 +130,22 @@
     border-right: 1px solid var(--border);
     padding: var(--space-6) var(--space-4);
     gap: var(--space-8);
+    transition: width var(--dur-base) var(--ease-out);
+  }
+
+  .railHead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
   }
 
   .brand {
     display: inline-flex;
     align-items: center;
     gap: var(--space-2);
-    padding-inline: var(--space-3);
+    min-width: 0;
+    padding-inline: var(--space-2);
     font-size: var(--text-base);
     font-weight: var(--weight-medium);
     letter-spacing: var(--tracking-tight);
@@ -117,6 +156,57 @@
     width: 1.25rem;
     height: 1.25rem;
     color: var(--accent);
+    transition: transform var(--dur-base) var(--ease-out);
+  }
+
+  .brand:hover .brandMark {
+    transform: rotate(-6deg) scale(1.06);
+  }
+
+  .brandName {
+    overflow: hidden;
+    white-space: nowrap;
+    transition:
+      opacity var(--dur-fast) var(--ease-out),
+      max-width var(--dur-base) var(--ease-out);
+    max-width: 6rem;
+  }
+
+  .collapse {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-md);
+    background-color: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition:
+      background-color var(--dur-fast) var(--ease-out),
+      color var(--dur-fast) var(--ease-out);
+  }
+
+  .collapse:hover {
+    background-color: var(--surface);
+    color: var(--text);
+  }
+
+  .collapse:active {
+    transform: scale(var(--press-scale-strong));
+  }
+
+  .collapseGlyph {
+    width: 1.125rem;
+    height: 1.125rem;
+    transition: transform var(--dur-base) var(--ease-out);
+  }
+
+  .collapseGlyphFlipped {
+    transform: rotate(180deg);
   }
 
   .tabs {
@@ -132,17 +222,84 @@
     min-height: 0;
     padding: var(--space-3);
     border-radius: var(--radius-lg);
+    transition:
+      color var(--dur-fast) var(--ease-out),
+      background-color var(--dur-fast) var(--ease-out);
   }
 
   .tab:hover {
     background-color: var(--surface);
   }
 
+  .tab:hover .iconWrap {
+    transform: translateX(1px);
+  }
+
   .active {
     background-color: var(--surface);
   }
 
+  /* On the rail the marker runs down the leading edge instead of across the top. */
+  .indicator {
+    inset: var(--space-2) auto var(--space-2) 0;
+    width: 2px;
+    height: auto;
+    transform: scaleY(0);
+    transform-origin: center;
+    transition: transform var(--dur-base) var(--ease-out);
+    background-color: var(--accent);
+  }
+
+  .active .indicator {
+    transform: scaleY(1);
+  }
+
   .label {
     font-size: var(--text-sm);
+    overflow: hidden;
+    white-space: nowrap;
+    transition:
+      opacity var(--dur-fast) var(--ease-out),
+      max-width var(--dur-base) var(--ease-out);
+    max-width: 8rem;
+  }
+}
+
+/* ── Collapsed rail: icons only. Labels stay in the a11y tree, just not on screen. ────── */
+@media (min-width: 768px) {
+  .collapsedRail {
+    padding-inline: var(--space-3);
+  }
+
+  .collapsedRail .railHead {
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .collapsedRail .brand {
+    padding-inline: 0;
+  }
+
+  .collapsedRail .brandName,
+  .collapsedRail .label {
+    max-width: 0;
+    opacity: 0;
+  }
+
+  .collapsedRail .tab {
+    justify-content: center;
+    gap: 0;
+    padding-inline: var(--space-2);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar,
+  .brandName,
+  .label,
+  .indicator,
+  .iconWrap,
+  .collapseGlyph {
+    transition: none;
   }
 }

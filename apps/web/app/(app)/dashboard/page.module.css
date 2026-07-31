@@ -118,3 +118,69 @@
     grid-column: span 5;
   }
 }
+
+/*
+ * ── Fill the viewport: the desktop answer to "one screen, no scrolling" ────────────────
+ *
+ * The page becomes exactly as tall as the shell gives it (`--content-height`) and the three
+ * progress panels share the final row, each scrolling inside its own card. So the whole
+ * dashboard is on screen at once — the summary never moves, and only the panel you are
+ * actually reading moves under the cursor.
+ *
+ * The shell hands over a viewport-height box (`[data-fill]`); this divides it into five rows,
+ * the last of which takes whatever is left. Guarded on height in the shell — short windows keep
+ * normal flow, because clipping is worse than a page that scrolls.
+ */
+@media (min-width: 1024px) and (min-height: 720px) {
+  .page {
+    height: 100%;
+    grid-template-rows: auto auto auto auto minmax(0, 1fr);
+    gap: var(--space-4) var(--space-5);
+    overflow: hidden;
+  }
+
+  /*
+   * Rows pair up so the panels get a real share of the height rather than a sliver: the week's
+   * stats sit beside the week's strip (both are "last 7 days"), and the two highlight rows go
+   * side by side. That buys the bottom row ~300px instead of ~110.
+   */
+  .stats {
+    grid-column: span 8;
+  }
+
+  .strip {
+    grid-column: span 4;
+  }
+
+  .highlights {
+    grid-column: span 12;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-5);
+  }
+
+  .volume {
+    grid-column: span 5;
+  }
+
+  .frequency {
+    grid-column: span 3;
+  }
+
+  .records {
+    grid-column: span 4;
+  }
+
+  .panel {
+    min-height: 0;
+  }
+
+  /* Only the body scrolls, so each panel keeps its heading pinned while you read it. */
+  .panelBody {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+}

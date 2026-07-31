@@ -860,3 +860,53 @@ Not required for Phase 0. Track here so they don't become surprise blockers:
 - **Notes / decisions:** extends **D33** rather than replacing it — the mobile split stands; what
   changed is that desktop no longer *composes* the two halves side by side, it *merges* them into
   one grid. No decision-log entry.
+
+## Phase 11F — Desktop fills the screen · collapsible rail · micro-interactions — DONE (built + self-verified; **Antigravity frontend-review gate outstanding**)
+- **Branch/PR:** `phase-11e-desktop-home` (continues on the same branch as 11E, which it directly
+  extends; committed locally, push + PR pending human go-ahead). Review-feedback work, not new scope.
+- **Pure frontend — no API, schema, or migration change.**
+- **1. Home fills the desktop viewport.** The shell marks the home route `[data-fill]`, takes
+  `height: 100dvh`, trims its own block padding, and hands the page a fixed box. The page divides
+  it into five rows, the last one `1fr`: **Volume · Frequency · Records side by side, each
+  scrolling inside its own panel body** so the headings stay pinned. Rows pair up above it —
+  the week's stats beside the week's strip, the two highlight rows side by side — which is what
+  buys the panel row ~300px instead of ~110px. Guarded to **≥1024px wide and ≥720px tall**; short
+  windows keep normal flow, because clipping is worse than scrolling.
+- **2. The rail collapses.** A chevron toggle in the rail head takes it 208px → 72px, icon-only,
+  with labels still in the accessibility tree (`title` tooltips on the links). The preference is a
+  **cookie**, read server-side, so the width is already right on the first paint — no flash, and no
+  inline `<head>` script for Phase 10's CSP to inherit. `--rail-width` is the single thing the
+  toggle changes; the content column and the docked session bar follow it automatically.
+- **3. Micro-interactions**, per `docs/08`'s motion rulebook (which is itself the codified
+  Emil-Kowalski guidance — see the note below): a **sliding active-tab indicator** (scaleX across
+  the top on mobile, scaleY down the leading edge on the rail), icon nudge on hover and press-scale
+  on tap, **day-strip bars growing in 30ms apart**, **volume bars extending in rank order 26ms
+  apart**, stat tiles staggering in and lifting 2px on hover, the "Continue" and highlight-row
+  arrows tracking the cursor, and a wordmark that tilts on hover. Two shared enter utilities
+  (`.grow-y` / `.grow-x` in `globals.css`, driven by a `--enter-delay` custom property) replace
+  `VolumeChart`'s private keyframes, so every growing bar in the app now shares one curve.
+- **DoD evidence:**
+  - **`/dashboard` measures `scrollHeight === clientHeight` at 1500×780, ×900 and ×1050** — no page
+    scroll at any of them, with a live session bar docked. At 1500×**820** with the guard removed it
+    correctly falls back to normal flow (1452px).
+  - **Rail:** 208px → **72px** on toggle, cookie `tempo_rail=collapsed` written, content column
+    reflows to x=186, the Library link stays in the a11y tree, and the width survives **navigation
+    and a full reload with no flash** (measured immediately after `domcontentloaded`).
+  - **Motion:** day-strip bars report `tempo-grow-y 0.32s` with per-bar delays; volume bars share
+    the same utility; the highlight chevron moves `translateX(4px)` on hover. Under
+    `prefers-reduced-motion: reduce` the strip animation collapses to `1e-05s` and the rail
+    transition resolves to `none`.
+  - **Craft rules held:** no gradients, no glow, no `transition: all` (every transition names its
+    properties), `isolation: isolate` on the nav, tokens-only values, all four interactive states
+    designed, motion 100–320ms on `transform`/`opacity` only.
+  - **Phone budget untouched:** `/dashboard` still `690 === 690` at 393px with the session bar.
+  - Full sweep at 393×690 and 1500×900 (dark **and** light): **zero console errors, zero hydration
+    warnings** across all nine authed routes plus `/log/[id]`. `next build`, `eslint .`,
+    `tsc --noEmit`, Prettier clean. API untouched → **209 passed**.
+- **Notes / decisions:** logged **D35** in `01`. The rail's `width` and the content column's
+  `padding-left` are animated — a considered exception to `docs/08 §4` (animate cheap properties),
+  since a resizing container has no `transform` equivalent and this is one user-initiated change,
+  not decoration; both are disabled under reduced motion.
+- **On the requested skill:** there is no `emil-kowalski` skill in this environment. `docs/08`
+  already names it as the motion rubric source **and codifies it** into eight checkable
+  principles, so that plus the `craft` skill's 12 rules were used as the standard instead.

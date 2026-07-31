@@ -120,6 +120,8 @@
   --tabbar-height: 3.5rem;
   --sessionbar-height: 3rem;
   --rail-width: 13rem;
+  /* Icon-only rail — one 40px target plus its gutters (Phase 11F). */
+  --rail-width-collapsed: 4.5rem;
   color-scheme: dark;
 }
 

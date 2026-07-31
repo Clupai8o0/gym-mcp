@@ -60,23 +60,14 @@
   overflow: hidden;
 }
 
+/* The bar's enter comes from the shared `.grow-x` utility (globals.css) so every growing bar
+ * in the app — here and the day strip — uses one curve and one duration (docs/08 §Implementation). */
 .fill {
   position: absolute;
   inset: 0 auto 0 0;
   height: 100%;
   border-radius: var(--radius-full);
   background-color: var(--accent);
-  transform-origin: left center;
-  animation: grow var(--dur-slow) var(--ease-out) both;
-}
-
-@keyframes grow {
-  from {
-    transform: scaleX(0);
-  }
-  to {
-    transform: scaleX(1);
-  }
 }
 
 .rowValue {
@@ -101,11 +92,5 @@
 
   .rowUnit {
     display: none;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .fill {
-    animation: none;
   }
 }

@@ -51,12 +51,12 @@
 @media (min-width: 768px) {
   .strip {
     gap: var(--space-3);
-    padding: var(--space-5);
+    padding: var(--space-4);
     border-radius: var(--radius-xl);
   }
 
   .cell {
-    height: 3.25rem;
+    height: 2.75rem;
     border-radius: var(--radius-md);
   }
 
@@ -77,7 +77,7 @@
 
   .cell {
     flex: 1;
-    min-height: 3.25rem;
+    min-height: 2.5rem;
     height: auto;
   }
 }

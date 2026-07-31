@@ -72,10 +72,27 @@
 @media (min-width: 768px) {
   .shell {
     padding-left: var(--rail-width);
+    /*
+     * How much height a page actually gets. Exported as a custom property so a screen that
+     * wants to *fill* the viewport (Home) can size itself without re-deriving the shell's
+     * padding or knowing whether a session bar is docked.
+     */
+    --content-height: calc(100dvh - var(--space-10) - var(--space-16));
+    /* One layout transition, deliberately: the rail has no transform equivalent, and this is a
+     * single user-initiated resize, not decoration (docs/08 §4 exception — see D35). */
+    transition: padding-left var(--dur-base) var(--ease-out);
+  }
+
+  .shell[data-rail="collapsed"] {
+    --rail-width: var(--rail-width-collapsed);
   }
 
   .main {
     padding: var(--space-10) var(--space-8) var(--space-16);
+  }
+
+  .shell[data-session="true"] {
+    --content-height: calc(100dvh - var(--space-10) - var(--sessionbar-height) - var(--space-16));
   }
 
   .shell[data-session="true"] .main {
@@ -85,5 +102,38 @@
   .dock {
     left: var(--rail-width);
     bottom: 0;
+    transition: left var(--dur-base) var(--ease-out);
+  }
+}
+
+/*
+ * ── Fill mode ─────────────────────────────────────────────────────────────────────────
+ * A screen that opts in (`data-fill`) gets exactly the viewport and no page scroll — the
+ * desktop reading of "one screen, no scrolling". The shell trims its own block padding here
+ * because in a filled layout that padding is competing with the content for the same pixels.
+ * Guarded on height: under 720px there is nothing worth filling, so normal flow returns.
+ */
+@media (min-width: 1024px) and (min-height: 720px) {
+  .shell[data-fill="true"] {
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  .shell[data-fill="true"] .main {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    padding-block: var(--space-6);
+  }
+
+  .shell[data-fill="true"][data-session="true"] .main {
+    padding-bottom: calc(var(--sessionbar-height) + var(--space-4));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell,
+  .dock {
+    transition: none;
   }
 }

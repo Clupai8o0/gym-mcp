@@ -195,11 +195,13 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           </h2>
           <span className={styles.panelMeta}>Last {range.label}</span>
         </div>
-        {rangeVolume.items.length > 0 ? (
-          <VolumeChart volume={rangeVolume} unit={unit} />
-        ) : (
-          <p className={styles.empty}>No sets logged in this range yet.</p>
-        )}
+        <div className={styles.panelBody}>
+          {rangeVolume.items.length > 0 ? (
+            <VolumeChart volume={rangeVolume} unit={unit} />
+          ) : (
+            <p className={styles.empty}>No sets logged in this range yet.</p>
+          )}
+        </div>
       </section>
 
       <section
@@ -212,7 +214,9 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           </h2>
           <span className={styles.panelMeta}>Last {range.weeks} weeks</span>
         </div>
-        <FrequencyHeatmap frequency={frequency} />
+        <div className={styles.panelBody}>
+          <FrequencyHeatmap frequency={frequency} />
+        </div>
       </section>
 
       <section className={`${styles.panel} ${styles.records}`} aria-labelledby="records-heading">
@@ -222,11 +226,13 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           </h2>
           <span className={styles.panelMeta}>All-time</span>
         </div>
-        {prs.items.length > 0 ? (
-          <PrList prs={prs.items} unit={unit} />
-        ) : (
-          <p className={styles.empty}>No personal records yet.</p>
-        )}
+        <div className={styles.panelBody}>
+          {prs.items.length > 0 ? (
+            <PrList prs={prs.items} unit={unit} />
+          ) : (
+            <p className={styles.empty}>No personal records yet.</p>
+          )}
+        </div>
       </section>
     </div>
   );

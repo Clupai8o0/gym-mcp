@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { Stagger } from "@/components/motion/Stagger";
 import { formatCount, formatTonnage } from "@/lib/format";
 import type { UnitPref } from "@/lib/types";
 import styles from "./WeekStats.module.css";
@@ -38,19 +39,17 @@ export function WeekStats({ sessions, tonnageKg, sets, prs, unit }: WeekStatsPro
   return (
     <section aria-label="Last 7 days">
       <p className={`eyebrow ${styles.caption}`}>Last 7 days</p>
-      <ul className={styles.grid}>
+      <Stagger className={styles.grid} as="ul" itemAs="li" step={30}>
         {stats.map((stat) => (
-          <li key={stat.label}>
-            <Link href={stat.href} className={styles.tile}>
-              <span className={styles.valueRow}>
-                <span className={`${styles.value} tnum`}>{stat.value}</span>
-                {stat.unit && <span className={styles.unit}>{stat.unit}</span>}
-              </span>
-              <span className={styles.label}>{stat.label}</span>
-            </Link>
-          </li>
+          <Link key={stat.label} href={stat.href} className={styles.tile}>
+            <span className={styles.valueRow}>
+              <span className={`${styles.value} tnum`}>{stat.value}</span>
+              {stat.unit && <span className={styles.unit}>{stat.unit}</span>}
+            </span>
+            <span className={styles.label}>{stat.label}</span>
+          </Link>
         ))}
-      </ul>
+      </Stagger>
     </section>
   );
 }

@@ -62,10 +62,17 @@ export function DayStrip({ sessionDates, now }: DayStripProps) {
 
   return (
     <Link href="/progress/frequency" className={styles.strip} aria-label="Last 7 days of training">
-      {days.map((day) => (
+      {days.map((day, index) => (
         <span key={day.key} className={styles.day}>
           <span
-            className={cn(styles.cell, day.count > 0 && styles.filled, day.today && styles.today)}
+            className={cn(
+              styles.cell,
+              "grow-y",
+              day.count > 0 && styles.filled,
+              day.today && styles.today,
+            )}
+            // 30ms apart — the week reads left to right instead of appearing at once (docs/08 §8).
+            style={{ "--enter-delay": `${index * 30}ms` } as React.CSSProperties}
             aria-hidden
           />
           <span className={styles.initial}>{day.initial}</span>

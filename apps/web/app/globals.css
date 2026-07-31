@@ -83,6 +83,53 @@ svg {
   padding-inline: var(--space-6);
 }
 
+/*
+ * ── Shared enter utilities (docs/08 §2–4, §8) ────────────────────────────────────────
+ * Global, like `.eyebrow` / `.tnum`, so components compose one vocabulary instead of each
+ * inventing keyframes. Both animate `transform` + `opacity` only. Stagger by setting
+ * `--enter-delay` per item (20–40ms steps); the global reduced-motion rule below neutralises
+ * every one of them.
+ */
+.grow-y,
+.grow-x {
+  animation-duration: var(--dur-slow);
+  animation-timing-function: var(--ease-out);
+  animation-fill-mode: both;
+  animation-delay: var(--enter-delay, 0ms);
+}
+
+/* A bar rising from its baseline — day strip cells. */
+.grow-y {
+  animation-name: tempo-grow-y;
+  transform-origin: bottom;
+}
+
+/* A bar extending from its start edge — volume rankings. */
+.grow-x {
+  animation-name: tempo-grow-x;
+  transform-origin: left;
+}
+
+@keyframes tempo-grow-y {
+  from {
+    opacity: 0;
+    transform: scaleY(0.05);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+@keyframes tempo-grow-x {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
 /* Accessible visually-hidden (labels for icon-only controls). */
 .sr-only {
   position: absolute;

@@ -71,6 +71,33 @@
   flex: none;
   color: var(--accent);
   font-size: var(--text-sm);
+  transition: transform var(--dur-base) var(--ease-out);
+}
+
+.link:hover .cta {
+  transform: translateX(var(--space-1));
+}
+
+/* The whole card is the target, so it takes the press — not just the words. */
+.link:active .active {
+  transform: scale(var(--press-scale));
+}
+
+.active {
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    transform var(--dur-micro) var(--ease-out);
+}
+
+.link:hover .active {
+  border-color: color-mix(in srgb, var(--accent) 62%, var(--border));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cta,
+  .active {
+    transition: none;
+  }
 }
 
 /* Desktop: the hero of the page — it spans the full width, so let it carry the weight. */
@@ -78,7 +105,7 @@
   .idle,
   .active {
     gap: var(--space-6);
-    padding: var(--space-6) var(--space-8);
+    padding: var(--space-5) var(--space-6);
     border-radius: var(--radius-xl);
   }
 
