@@ -779,4 +779,49 @@ Not required for Phase 0. Track here so they don't become surprise blockers:
   both heaviest *and* highest-rep only records the weight. The handover flags both and says to ask
   first — it is a locked contract ported from the legacy app, so nothing was touched.
 
+## Phase 11D — PWA cache privacy fix — DONE (reproduced, fixed, and re-verified)
+- **Branch/PR:** `phase-11d-pwa-cache` (cut from `phase-11c-dashboard-home` HEAD; committed
+  locally, push + PR pending human go-ahead).
+- **The bug (reproduced this session, not inferred).** `public/sw.js` v2 cached navigations
+  per-URL, and authed routes are server-rendered HTML containing the user's data. With the v2
+  worker restored and driven in a real browser: visit `/dashboard`, `/settings`, `/library`,
+  `/log` signed in → Cache Storage held **all four** → clear cookies → stop the origin → navigate
+  to `/dashboard` → **the previous user's full dashboard rendered from cache** ("Hey, Alex", the
+  bench-press record), and the same for `/settings` and `/library`. Nothing ever evicted it. The
+  worker's own header comment claimed authenticated data was never served stale; that was only
+  ever true of **API responses** (the worker skips the API origin) — the recorded reasoning in
+  **D27** was wrong about the HTML.
+- **Scope (shipped) — no rebuild of the PWA; the worker and one new helper only:**
+  - **Authed navigations are never cached.** `PUBLIC_PATHS = {"/", "/offline"}` — the only routes
+    that render no user data — are precached (individually, so one unreachable page can't fail
+    the install) and runtime-cached. Any other navigation is fetched, returned, and forgotten;
+    offline, it falls straight through to `/offline` without even consulting the cache.
+  - **Cache bumped to `v3`**, so the existing `activate` sweep evicts every v2 entry on upgrade.
+  - **Sign-out wipes Cache Storage** — new `lib/pwa.clearAppCaches()` (deletes every cache, then
+    posts `tempo:clear-caches` to the worker in case the page is torn down first), called from
+    `AccountCard`'s sign-out before the redirect. Defence in depth for devices that upgraded from
+    a leaky worker.
+  - **The misleading header comment is replaced** with what the worker actually guarantees.
+  - Static build assets + icons keep their stale-while-revalidate path (no user data by
+    construction). **`lib/offline` is byte-identical to Phase 9** (`git diff phase-9-polish..HEAD
+    -- apps/web/lib/offline` is empty), as is `components/log/SetRow`.
+- **DoD evidence** (same browser harness, before *and* after, so a passing check can't be vacuous
+  — each run asserts the worker is actually controlling the page first):
+  - **After sign-out + offline, no authed route renders cached content.** v3: `/dashboard`,
+    `/settings`, `/library` **all serve `/offline`**, and none contains the previous user's
+    markers. v2, for contrast: all three leaked.
+  - **`caches` contains no authed page URLs after visiting them** — v3 cache contents after
+    visiting all four authed routes: `['/offline', '/']` (plus `/_next/static/*`). v2's contents
+    at the same point: `['/offline', '/dashboard', '/settings', '/library', '/log']`.
+  - **Offline shell still works** — `/offline` renders with the origin down, on both workers.
+  - **Set-logging offline queue untouched and still functioning** — with the network cut mid-set:
+    the row shows **Queued**, the status line reads *"Offline · 1 set queued"*, and IndexedDB
+    holds the payload; on reconnect the queue drains, the badge clears, and the set lands in
+    Postgres **with its PR verdict** (`70 kg × 6 → is_pr=t, pr_type=reps`).
+  - **Sign-out wipes a stale pre-upgrade cache** — seeded a fake `tempo-shell-v2` holding a
+    `/dashboard` response, signed out, and it was gone (`caches.has('tempo-shell-v2') === false`).
+  - `next build`, `eslint .`, `tsc --noEmit`, Prettier clean. API untouched → **209 passed**.
+- **Notes / decisions:** logged **D34** in `01` (and it supersedes D27's claim about cached
+  authed data). No new dependency, no new env, no migration.
+
 ## Phase 10 — Deploy & launch — NOT STARTED

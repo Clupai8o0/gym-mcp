@@ -112,6 +112,10 @@ a link to its own screen — except above 768px, where they render inline in hom
 - Service worker: app-shell caching + an **offline write queue** for set logging (IndexedDB).
   On reconnect, flush the queue to `/api/sessions/{id}/sets`, resolving PR flags from the
   server response.
+- **The worker must never cache an authenticated navigation** (Phase 11D, D34). Authed routes are
+  server-rendered HTML containing the signed-in user's data, and a cache outlives the session
+  cookie — only `/` and `/offline` are cached; everything else falls through to `/offline` when
+  the network is gone. Sign-out additionally wipes Cache Storage (`lib/pwa`).
 - Scope offline strictly to logging in v1 (the highest-value offline case); browsing/dashboard
   can require connectivity. Don't over-build offline.
 

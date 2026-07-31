@@ -4,10 +4,15 @@ import { useState } from "react";
 
 import { Button, Card, LocalTime } from "@/components/ui";
 import { API_URL, CLIENT_HEADER } from "@/lib/env";
+import { clearAppCaches } from "@/lib/pwa";
 import type { Me } from "@/lib/types";
 import styles from "./AccountCard.module.css";
 
-/** The signed-in identity + sign-out (Settings → account, docs/07). Sign-out mirrors the header. */
+/**
+ * The signed-in identity + sign-out (Settings → account, docs/07). Since Phase 11B this is the
+ * only sign-out in the app — it is a destructive control and doesn't belong a thumb-width from
+ * the nav.
+ */
 export function AccountCard({ me }: { me: Me }) {
   const [busy, setBusy] = useState(false);
 
@@ -22,6 +27,8 @@ export function AccountCard({ me }: { me: Me }) {
     } catch {
       // Ignore network errors — redirecting home is enough to end the client session.
     }
+    // Ending the session must also end anything cached under it (Phase 11D).
+    await clearAppCaches();
     window.location.href = "/";
   };
 
