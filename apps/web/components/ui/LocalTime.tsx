@@ -1,18 +1,22 @@
 "use client";
 
 import { useHydrated } from "@/lib/hydration";
-import { formatDate, formatRelativeDate, formatTime } from "@/lib/format";
+import { formatDate, formatDayLabel, formatRelativeDate, formatTime } from "@/lib/format";
 
 const FORMATTERS = {
   date: formatDate,
   time: formatTime,
   relative: formatRelativeDate,
+  day: formatDayLabel,
 } as const;
 
 export interface LocalTimeProps {
   /** ISO-8601 instant from the API. */
   iso: string;
-  /** `date` → "Jul 7, 2026" · `time` → "5:46 PM" · `relative` → "Today" / "3 days ago". */
+  /**
+   * `date` → "Jul 7, 2026" · `time` → "5:46 PM" · `relative` → "Today" / "3 days ago" ·
+   * `day` → "Friday, Jul 31".
+   */
   format?: keyof typeof FORMATTERS;
   className?: string;
 }

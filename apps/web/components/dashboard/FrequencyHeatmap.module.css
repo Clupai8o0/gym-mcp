@@ -47,6 +47,17 @@
   flex: none;
 }
 
+/* On its own page the heatmap is the content, not a summary — give the cells room to be read. */
+.stripLg {
+  gap: var(--space-2);
+}
+
+.stripLg > .cell {
+  width: 1.85rem;
+  height: 1.85rem;
+  border-radius: var(--radius-md);
+}
+
 /* Token-driven intensity: mix the accent into the empty-cell color (theme-aware). */
 .l0 {
   background-color: var(--surface-3);

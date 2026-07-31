@@ -146,9 +146,29 @@ export async function listConnections(): Promise<ConnectionList> {
   return getJson<ConnectionList>("/api/connections");
 }
 
+export interface SessionFilters {
+  limit?: number;
+  offset?: number;
+  /** ISO instant — only sessions performed at or after this. */
+  from?: string;
+  /** ISO instant — only sessions performed at or before this. */
+  to?: string;
+}
+
 /** Recent workout sessions, newest first (docs/07 §Log — the `/log` home list). */
-export async function listSessions(limit = 20, offset = 0): Promise<SessionList> {
-  return getJson<SessionList>(`/api/sessions?limit=${limit}&offset=${offset}`);
+export async function listSessions(
+  limitOrFilters: number | SessionFilters = 20,
+  offset = 0,
+): Promise<SessionList> {
+  const filters: SessionFilters =
+    typeof limitOrFilters === "number" ? { limit: limitOrFilters, offset } : limitOrFilters;
+  const params = new URLSearchParams({
+    limit: String(filters.limit ?? 20),
+    offset: String(filters.offset ?? 0),
+  });
+  if (filters.from) params.set("from", filters.from);
+  if (filters.to) params.set("to", filters.to);
+  return getJson<SessionList>(`/api/sessions?${params.toString()}`);
 }
 
 /**

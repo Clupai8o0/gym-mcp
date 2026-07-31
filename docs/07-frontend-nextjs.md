@@ -20,8 +20,11 @@ apps/web/
 │   │   ├── log/
 │   │   │   ├── page.tsx          # today / active session
 │   │   │   └── [sessionId]/page.tsx
-│   │   ├── dashboard/
-│   │   │   ├── page.tsx          # PRs, volume, frequency
+│   │   ├── dashboard/page.tsx    # HOME (11C): active workout, week stats, day strip, highlights
+│   │   ├── progress/             # the sections home summarises (11C)
+│   │   │   ├── volume/page.tsx   # VolumeChart + the range control
+│   │   │   ├── frequency/page.tsx
+│   │   │   ├── records/page.tsx  # all-time PRs (no range control)
 │   │   │   └── skills/page.tsx   # secondary skill-tree module
 │   │   └── settings/page.tsx     # units, connected apps (MCP), account
 │   ├── layout.tsx                # root: fonts, theme, providers
@@ -31,6 +34,8 @@ apps/web/
 │   ├── library/                  # ExerciseCard, FilterBar, MuscleTag, IllustrationImage
 │   ├── log/                      # SetRow, SetEntryPad, ExercisePicker, RestTimer
 │   ├── dashboard/                # PRList, VolumeChart, FrequencyHeatmap, SkillRing
+│   ├── home/                     # HomeHeader, WorkoutCard, WeekStats, DayStrip (11C)
+│   ├── app/                      # TabBar (tabs / left rail), SessionBar, Logo (11B)
 │   └── motion/                   # shared motion primitives (see 08)
 ├── lib/
 │   ├── api.ts                    # typed fetch client → api.tempo.clupai.com (CORS + credentials)
@@ -66,11 +71,16 @@ apps/web/
 - **Offline-first (PWA):** logging must survive a flaky gym connection. Queue set writes locally
   (IndexedDB) and sync when back online; the UI reflects pending/synced state. See PWA below.
 
-### Dashboard
-- **PRs:** per-exercise best lifts/holds, with the exercise illustration.
-- **Volume:** sets/reps/tonnage over a selectable range (`analytics.volume`).
-- **Frequency:** sessions per ISO week (`analytics.frequency`) as a heatmap/bar.
-- **Skills (secondary):** `/dashboard/skills` — ring/stage visualization per calisthenics skill;
+### Home & progress
+`/dashboard` is the **front door** (Phase 11C): the workout in progress, the last seven days as
+four stats and a day strip, and one row each for the latest PR and top skill. Everything below is
+a link to its own screen — except above 768px, where they render inline in home's right column.
+- **Volume** (`/progress/volume`): sets/reps/tonnage over a selectable range (`analytics.volume`).
+  The range control lives here, with the only data it governs.
+- **Frequency** (`/progress/frequency`): sessions per ISO week (`analytics.frequency`) as a heatmap.
+- **Records** (`/progress/records`): per-exercise best lifts/holds with the exercise illustration.
+  All-time — `listPrs()` takes no window, so there is deliberately no range control.
+- **Skills (secondary)** (`/progress/skills`): ring/stage visualization per calisthenics skill;
   edit current stage/%. Clearly a secondary module, not the front page.
 
 ## Data fetching & mutations

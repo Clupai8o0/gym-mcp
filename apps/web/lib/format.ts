@@ -18,10 +18,18 @@ export function formatWeight(kg: number, unit: "kg" | "lb" = "kg"): string {
   return `${text} ${unit}`;
 }
 
-/** A whole-number tonnage in the user's unit, grouped ("1,050 kg") — for volume totals. */
-export function formatTonnage(kg: number, unit: UnitPref = "kg"): string {
+/**
+ * A whole-number tonnage in the user's unit, grouped ("1,050 kg") — for volume totals.
+ * `withUnit: false` returns just the number, for callers that render the unit separately.
+ */
+export function formatTonnage(
+  kg: number,
+  unit: UnitPref = "kg",
+  { withUnit = true }: { withUnit?: boolean } = {},
+): string {
   const value = unit === "lb" ? kgToLb(kg) : kg;
-  return `${Math.round(value).toLocaleString()} ${unit}`;
+  const number = Math.round(value).toLocaleString();
+  return withUnit ? `${number} ${unit}` : number;
 }
 
 /** Group a count with thousands separators ("1,204"). */
@@ -119,10 +127,33 @@ export function titleCase(value: string): string {
   return value.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+const WEEKDAYS = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+] as const;
+
 /** "Jul 7, 2026". */
 export function formatDate(iso: string, zone: Zone = "local"): string {
   const { year, month, day } = fields(new Date(iso), zone);
   return `${MONTHS[month]} ${day}, ${year}`;
+}
+
+/** "Friday, Jul 31" — the home screen's date line. */
+export function formatDayLabel(iso: string, zone: Zone = "local"): string {
+  const date = new Date(iso);
+  const { month, day } = fields(date, zone);
+  const weekday = WEEKDAYS[zone === "utc" ? date.getUTCDay() : date.getDay()];
+  return `${weekday}, ${MONTHS[month]} ${day}`;
+}
+
+/** Single-letter weekday initials, Sunday-first — the seven-day strip. */
+export function weekdayInitial(dayOfWeek: number): string {
+  return WEEKDAYS[dayOfWeek].slice(0, 1);
 }
 
 const DAY_MS = 86_400_000;

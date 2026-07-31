@@ -1,25 +1,30 @@
+/*
+ * Home. The governing constraint is one phone screen with no scrolling (~690px in mobile Safari),
+ * so the summary column is deliberately six short blocks and nothing more. Above 768px that
+ * constraint evaporates and the `/progress/*` content renders inline beside it.
+ */
 .page {
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: var(--space-8);
 }
 
-.head {
+.summary {
   display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--space-4);
-  flex-wrap: wrap;
+  flex-direction: column;
+  /* Tight on purpose: home must clear the tab bar *and* a docked session bar inside ~690px. */
+  gap: var(--space-3);
 }
 
-.titleBlock {
+.highlights {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
 }
 
-.title {
-  font-size: var(--text-3xl);
+/* Below 768px the progress sections are separate destinations, reached from the tiles above. */
+.wide {
+  display: none;
 }
 
 .section {
@@ -36,8 +41,12 @@
 }
 
 .sectionTitle {
-  font-size: var(--text-xl);
+  font-size: var(--text-lg);
   letter-spacing: var(--tracking-tight);
+}
+
+.sectionTitle a:hover {
+  color: var(--accent);
 }
 
 .sectionMeta {
@@ -53,4 +62,41 @@
   background-color: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
+}
+
+@media (min-width: 1024px) {
+  .page {
+    display: grid;
+    grid-template-columns: minmax(18rem, 24rem) minmax(0, 1fr);
+    gap: var(--space-10);
+    align-items: start;
+  }
+
+  .summary {
+    position: sticky;
+    top: var(--space-10);
+    gap: var(--space-5);
+  }
+}
+
+/* From 768px the vertical budget that forced the split is gone — show the progress content
+ * inline. Between 768 and 1024 it stacks under the summary rather than crushing two columns. */
+@media (min-width: 768px) {
+  .wide {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+  }
+
+  .wideHead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    flex-wrap: wrap;
+  }
+
+  .wideTitle {
+    font-size: var(--text-2xl);
+  }
 }

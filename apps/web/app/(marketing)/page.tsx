@@ -32,7 +32,7 @@ export default function MarketingPage() {
           <Logo />
           Tempo
         </span>
-        <Link href={loginUrl("/library")}>
+        <Link href={loginUrl()}>
           <Button variant="outline" size="sm">
             Sign in
           </Button>
@@ -55,7 +55,7 @@ export default function MarketingPage() {
           </FadeIn>
           <FadeIn delay={120}>
             <div className={styles.cta}>
-              <Link href={loginUrl("/library")}>
+              <Link href={loginUrl()}>
                 <Button variant="primary">Sign in with Google</Button>
               </Link>
               <Link href="/library">

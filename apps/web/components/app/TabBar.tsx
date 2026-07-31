@@ -17,7 +17,8 @@ interface Tab {
 }
 
 const TABS: readonly Tab[] = [
-  { href: "/dashboard", label: "Home", Icon: HomeIcon },
+  // Home owns the `/progress/*` screens too — they are the sections it summarises (Phase 11C).
+  { href: "/dashboard", label: "Home", Icon: HomeIcon, owns: ["/progress"] },
   { href: "/library", label: "Library", Icon: LibraryIcon },
   { href: "/log", label: "Log", Icon: LogIcon },
   { href: "/settings", label: "You", Icon: YouIcon },

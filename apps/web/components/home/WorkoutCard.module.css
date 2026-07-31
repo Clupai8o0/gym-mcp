@@ -1,0 +1,74 @@
+.link {
+  display: block;
+}
+
+.idle,
+.active {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.idleText,
+.activeText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.idleTitle {
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+}
+
+/* A live session is the one place the accent earns a whole card. */
+.active {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+
+.live {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--accent);
+}
+
+.pulse {
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-full);
+  background-color: var(--accent);
+  animation: workout-pulse var(--dur-loop) var(--ease-in-out) infinite;
+}
+
+@keyframes workout-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse {
+    animation: none;
+  }
+}
+
+.activeTitle {
+  font-size: var(--text-lg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activeMeta {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.cta {
+  flex: none;
+  color: var(--accent);
+  font-size: var(--text-sm);
+}

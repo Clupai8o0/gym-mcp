@@ -16,7 +16,14 @@ function level(count: number): number {
  * weeks in from the API; each cell's intensity is a token-driven `color-mix` of the accent, so it
  * stays theme-aware and tokens-only. Server component — a11y via a summary label + per-cell title.
  */
-export function FrequencyHeatmap({ frequency }: { frequency: Frequency }) {
+export function FrequencyHeatmap({
+  frequency,
+  size = "md",
+}: {
+  frequency: Frequency;
+  /** `lg` on `/progress/frequency`, where the heatmap is the whole page and cells can breathe. */
+  size?: "md" | "lg";
+}) {
   const items = frequency.items;
   const totalSessions = items.reduce((sum, item) => sum + item.count, 0);
   const activeWeeks = items.filter((item) => item.count > 0).length;
@@ -41,7 +48,7 @@ export function FrequencyHeatmap({ frequency }: { frequency: Frequency }) {
         </dl>
 
         <div
-          className={styles.strip}
+          className={cn(styles.strip, size === "lg" && styles.stripLg)}
           role="img"
           aria-label={`Training frequency: ${totalSessions} sessions across ${frequency.weeks} weeks`}
         >

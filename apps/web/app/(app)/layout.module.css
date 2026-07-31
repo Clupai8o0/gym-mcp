@@ -31,7 +31,7 @@
   /* No sticky top bar any more (Phase 11B) — screens open at the top of their own title row.
    * The bottom padding clears the fixed tab bar, the iOS home indicator, and breathing room. */
   padding: var(--space-6) var(--space-4)
-    calc(var(--tabbar-height) + env(safe-area-inset-bottom, 0px) + var(--space-8));
+    calc(var(--tabbar-height) + env(safe-area-inset-bottom, 0px) + var(--space-4));
   outline: none;
 }
 
@@ -39,7 +39,7 @@
 .shell[data-session="true"] .main {
   padding-bottom: calc(
     var(--tabbar-height) + var(--sessionbar-height) + env(safe-area-inset-bottom, 0px) +
-      var(--space-8)
+      var(--space-4)
   );
 }
 

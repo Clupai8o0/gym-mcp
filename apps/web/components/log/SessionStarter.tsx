@@ -12,6 +12,10 @@ export interface SessionStarterProps {
   exerciseSlug?: string;
   /** `compact` renders just the button (used alongside a "continue today" card). */
   compact?: boolean;
+  /** Compact label override — "Start another workout" reads wrong as home's primary action. */
+  label?: string;
+  /** Compact button variant; home makes starting a workout the accent call to action. */
+  variant?: "primary" | "outline";
 }
 
 /**
@@ -19,7 +23,12 @@ export interface SessionStarterProps {
  * REST/MCP use, then navigates to its logging surface. An optional title keeps the common path
  * one tap; a pending exercise slug is forwarded so it's pre-added on arrival.
  */
-export function SessionStarter({ exerciseSlug, compact = false }: SessionStarterProps) {
+export function SessionStarter({
+  exerciseSlug,
+  compact = false,
+  label = "Start another workout",
+  variant = "outline",
+}: SessionStarterProps) {
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [starting, setStarting] = useState(false);
@@ -43,8 +52,8 @@ export function SessionStarter({ exerciseSlug, compact = false }: SessionStarter
 
   if (compact) {
     return (
-      <Button variant="outline" onClick={start} loading={starting}>
-        Start another workout
+      <Button variant={variant} onClick={start} loading={starting}>
+        {label}
       </Button>
     );
   }

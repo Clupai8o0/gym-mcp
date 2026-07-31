@@ -715,4 +715,68 @@ Not required for Phase 0. Track here so they don't become surprise blockers:
   state; hand-rolled date formatting + `LocalTime` rendering UTC-then-local rather than blanking or
   guessing a timezone; session bar suppressed on its own page). No new dependency, no new env.
 
+## Phase 11C — Dashboard becomes home — DONE (built + self-verified; **Antigravity frontend-review gate outstanding**)
+- **Branch/PR:** `phase-11c-dashboard-home` (cut from `phase-11b-mobile-shell` HEAD; committed
+  locally, push + PR pending human go-ahead).
+- **⚠️ Gate not yet satisfied:** UI phase → the **Antigravity frontend review** (docs/08 rubric) is
+  outstanding, as for Phases 6–9 and 11B. Lighthouse/CWV still needs a deploy.
+- **Pure frontend — no API, schema, or migration change** (every number comes from endpoints that
+  already existed).
+- **Scope (shipped):**
+  - **`/dashboard` is now the summary screen**, top to bottom: compact date + avatar row → the
+    **active-session card** (or a Start affordance) → four stats for the last 7 days (Sessions ·
+    Tonnage · Sets · PRs) → a seven-day strip → one row for the latest PR → one row for the top
+    skill. New `components/home/` (`HomeHeader`, `WorkoutCard`, `WeekStats`, `DayStrip`,
+    `HighlightRow`, `HomeWelcome`). The workout is never below the fold.
+  - **Sections moved out as-built**, loading + empty states intact: `/progress/volume` (VolumeChart
+    **+ the RangeControl**), `/progress/frequency` (FrequencyHeatmap at a new readable `size="lg"`),
+    `/progress/records` (PrList), `/progress/skills` (SkillsBoard). `DashboardTabs` and
+    `/dashboard/skills` **deleted**; the Home tab now owns `/progress/*`.
+  - **Fixed while moving it:** `RangeControl` hard-coded `router.push("/dashboard?range=…")`, so on
+    its new pages it would have navigated away — it now rewrites the current path. It appears on
+    volume and frequency only; **records is all-time**, and home below 768px shows no range control.
+  - **Front door:** `loginUrl()` defaults to `/dashboard` (both marketing CTAs included), and
+    `manifest.webmanifest` `start_url` `/log` → `/dashboard` with `shortcuts` re-cut to the two
+    places the start URL *isn't* — Log and Library.
+  - **New-account empty state:** a fresh account now lands on one line of welcome, **Start your
+    first workout**, and **Browse 873 exercises** instead of three empty boxes. Stats, strip and
+    highlight rows appear only once there is something to count.
+  - **Desktop (≥768px):** the `/progress/*` content renders **inline** in home's right column
+    (two columns from 1024px, stacked between 768–1024) — same components, no second set.
+  - **Timezone discipline:** the stats window is a **rolling 7 days** (two instants → identical in
+    every timezone) rather than a UTC "since Monday"; the strip fetches a 9-day overshoot and
+    buckets into local calendar days in the browser (`useHydrated`, same pattern as `LocalTime`).
+- **DoD evidence** (live local stack, real seeded Postgres, minted dev sessions):
+  - **Home fits 690px at 393px wide with no scroll, populated *and* empty** — measured
+    `scrollHeight === clientHeight === 690` **with a live session** (so the docked session bar and
+    the tab bar are both on screen), and again on a brand-new account. Trimming the summary gap and
+    the shell's bottom breathing room bought the 20px the session bar needed.
+  - **Every moved section works at its new route**: `/progress/{volume,frequency,records,skills}`
+    all render at 393×690 with zero console/hydration errors, each with its `loading.tsx` skeleton
+    and its empty state (verified on the fresh account: "No personal records yet" with a CTA, "No
+    sets logged in this range yet").
+  - **Range control governs the whole `/progress/volume` page**: clicking **30D** stays on
+    `/progress/volume?range=30d` and the page re-renders against the new window. `/progress/records`
+    exposes no range control; home at 393px exposes **0** visible range controls.
+  - **Sign-in lands on `/dashboard`** — both marketing CTAs resolve to
+    `…/oauth/login/google?return_to=%2Fdashboard`; served `manifest.webmanifest` reports
+    `start_url: /dashboard`, `shortcuts: [Log → /log, Library → /library]`.
+  - **New-account empty state rendered against a real fresh `users` row** (`newbie@tempo.local`,
+    zero sessions/PRs) — screenshotted at 393×690.
+  - **Home tab shows `aria-current="page"` on `/dashboard`, `/progress/volume` and
+    `/progress/skills`.**
+  - **`next build` green** (12 routes incl. the four new ones), **`eslint .`**, **`tsc --noEmit`**,
+    and **Prettier** clean; **no hydration warnings** on any route at 393×690, 800×900, or
+    1280×900. API untouched → **209 passed** still stands.
+- **Notes / decisions:** logged **D33** in `01`. Two deliberate trade-offs: (a) the desktop column's
+  two extra aggregate queries run on mobile too, because a server render cannot branch on viewport
+  width — they are cheap, and the hidden column's `next/image`s are lazy so nothing is fetched for
+  them; (b) the "Dashboard" PWA shortcut was dropped rather than reordered, since it would now
+  duplicate `start_url`.
+- **Deliberately NOT changed — needs an orchestrator decision (see the report):** PR semantics. An
+  ascending warm-up (80×8, 90×6, 102.5×3) still returns `is_pr=true` on **every** set, and
+  `_detect` in `app/services/sets.py` still returns on the first matching metric so a set that is
+  both heaviest *and* highest-rep only records the weight. The handover flags both and says to ask
+  first — it is a locked contract ported from the legacy app, so nothing was touched.
+
 ## Phase 10 — Deploy & launch — NOT STARTED

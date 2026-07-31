@@ -9,8 +9,11 @@ import { redirect } from "next/navigation";
 import { API_URL, getMe } from "./api";
 import type { Me } from "./types";
 
-/** Build the API's Google-login URL, returning the user to `returnTo` afterward. */
-export function loginUrl(returnTo = "/library"): string {
+/**
+ * Build the API's Google-login URL, returning the user to `returnTo` afterward.
+ * The front door is the dashboard (Phase 11C) — signing in lands on your training, not a catalog.
+ */
+export function loginUrl(returnTo = "/dashboard"): string {
   const params = new URLSearchParams({ return_to: returnTo });
   return `${API_URL}/oauth/login/google?${params.toString()}`;
 }
