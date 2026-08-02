@@ -45,8 +45,8 @@ from its last set.
 
 ## Tools
 - **Library:** `search_exercises`, `get_exercise`, `create_custom_exercise`
-- **Logging:** `log_session`, `get_active_session`, `finish_session`, `list_sessions`,
-  `get_session`, `get_session_sets`, `log_set`
+- **Logging:** `log_session`, `update_session`, `get_active_session`, `finish_session`,
+  `list_sessions`, `get_session`, `get_session_sets`, `log_set`
 - **Records:** `get_prs`, `get_pr_history`, `log_pr`
 - **Analytics:** `get_volume_summary`, `get_session_frequency`
 - **Skills (calisthenics tree):** `get_skill_overview`, `get_skill_detail`,
@@ -54,6 +54,11 @@ from its last set.
 
 Set metrics are optional but you must supply at least one of `weight_kg`, `reps`, or
 `hold_seconds`. Weight PRs require both weight and reps on the set.
+
+Recording a past workout? Give `log_session` its real `performed_at` (and `duration_minutes`
+if known) and it is stored already finished — only a session started just now stays "in
+progress". Got something wrong? `update_session` fixes the title, type, notes, date or
+duration afterwards.
 
 `log_set` detects PRs from what was actually lifted. Use `log_pr` for a record that has no set
 behind it — an estimated 1RM, a hold timed outside a session, or a PR brought over from another

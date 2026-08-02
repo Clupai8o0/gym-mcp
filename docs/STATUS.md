@@ -1044,3 +1044,49 @@ Not required for Phase 0. Track here so they don't become surprise blockers:
   Two of the report's five test cases (`set 60` and `set 100`) only hold for a **weight-only**
   set; adding reps makes them a genuine *reps* PR, since the floor is per-metric and no reps
   record was standing. Covered explicitly by `test_reps_is_judged_separately`.
+
+## Phase 11J — Session lifecycle: backdating, duration ownership, post-hoc correction — DONE
+- **Branch/PR:** `phase-11e-desktop-home`
+- **Three reported defects, one root theme:** a session's end was never established at creation,
+  and nothing could correct it afterwards, so every mistake was permanent.
+
+- **Bug 2 — `log_session` left `ended_at` null, so backdated sessions registered as active.**
+  `create` now closes a session at creation when it plainly is not a live one: `performed_at +
+  duration_minutes` when a duration was stated, else `performed_at` when it started longer ago
+  than a workout can last. `get_active_session` additionally refuses any open session whose
+  **`performed_at`** is outside the window, and retires it — the last-activity clock alone was
+  not enough, because adding a set to a three-month-old session kept resetting it.
+  - **The test is a rolling window, never "is `performed_at` today?".** That calendar question is
+    exactly what Phase 11A removed (D31/D33): it evaluates in the server's timezone, so a 5 pm
+    session in UTC−8 is already "tomorrow". Hours mean the same thing everywhere and answer the
+    question actually being asked — *could this still be happening?* `STALE_AFTER` (12 h) is
+    reused for both, so a session can never be created open and be judged abandoned by the very
+    next read.
+
+- **Bug 3 — `finish_session` recomputed `duration_minutes`, overwriting the caller's value.**
+  `_stamp_finished` now derives a duration **only when none was stated**. A derived duration is
+  also clamped to `MAX_DERIVED_DURATION` (8 h), so a session left open and finished days later
+  records the ceiling rather than 136,070 minutes. An explicit duration is never clamped — it is
+  the user's own claim about their workout.
+
+- **`update_session` MCP tool** (title / type / notes / performed_at / duration_minutes),
+  write-scoped, over the `PATCH /api/sessions/{id}` that REST already had. Changing
+  `performed_at` or `duration_minutes` on a **finished** session also moves its `ended_at`, so a
+  corrected row stays internally consistent; an in-progress session keeps its null end.
+  - Omitting an argument leaves the field unchanged, so the tool cannot clear one back to empty —
+    documented in the tool description, with empty string as the escape hatch. REST keeps full
+    `exclude_unset` semantics.
+
+- **Also added:** `app/core/clock.py` — `as_utc` / `now`. MCP callers can send a naive timestamp,
+  which previously raised `TypeError` deep inside a service when compared to an aware `now()`.
+  `services/prs` had grown its own copy; both now share one.
+
+- **DoD evidence:** **260 passed** (the 3 failures remain the pre-existing image/chroma ones).
+  ruff, black, `mypy --strict` clean. Live over HTTP: a 90-day-old session is created
+  `ended_at` set and `active` reads `null`; a session started now stays live and *is* returned as
+  active; an explicit `duration_minutes=52` survives `finish` unchanged; a 94-day open session
+  finishes at **480 min**, not 135,360; and `PATCH` with `duration_minutes: 60` moves `ended_at`
+  so `end − start == 60`.
+- **Notes:** no schema change. The MCP contract fixture now seeds a session 30 minutes old rather
+  than a fixed calendar date — under the new rule a month-old session is correctly *not* active,
+  so the old fixture was asserting the bug.

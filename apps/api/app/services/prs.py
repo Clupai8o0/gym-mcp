@@ -22,13 +22,13 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core import errors
+from app.core import clock, errors
 from app.models import (
     PR_TYPES,
     PR_UNITS,
@@ -59,16 +59,6 @@ def require_pr_type(pr_type: str) -> str:
             f"pr_type must be one of {', '.join(PR_TYPES)}", pr_type=pr_type, valid=list(PR_TYPES)
         )
     return pr_type
-
-
-def _as_utc(moment: datetime) -> datetime:
-    """Treat a naive instant as UTC.
-
-    MCP clients hand us whatever their JSON carried, and a naive value compared against an aware
-    ``now()`` raises ``TypeError`` rather than failing validation cleanly. The column is
-    ``timestamptz``, so UTC is the only defensible reading of a bare timestamp.
-    """
-    return moment if moment.tzinfo is not None else moment.replace(tzinfo=UTC)
 
 
 async def list_prs(
@@ -136,8 +126,8 @@ async def log_manual_pr(
     if amount <= 0:
         raise errors.validation("value must be greater than zero", value=float(amount))
 
-    when = _as_utc(achieved_at)
-    if when > datetime.now(UTC):
+    when = clock.as_utc(achieved_at)
+    if when > clock.now():
         raise errors.validation("achieved_at cannot be in the future", achieved_at=when.isoformat())
 
     # Raises not_found for an exercise that is neither global nor this user's own.

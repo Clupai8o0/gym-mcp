@@ -233,3 +233,152 @@ async def test_sweep_retires_older_dangling_sessions_but_keeps_the_live_one(
 
     await db_session.refresh(abandoned)
     assert abandoned.ended_at is not None  # swept, even though it wasn't the newest
+
+
+# ── Lifecycle: backdating, duration ownership, and post-hoc correction ────────────────────
+class TestBackdatedSessionsAreBornFinished:
+    """`log_session` used to leave `ended_at` null whatever it was handed, so recording last
+    Tuesday's workout made it "in progress" and the session bar offered to resume it."""
+
+    async def test_a_session_started_now_stays_open(self, db_session: AsyncSession) -> None:
+        user = await make_user(db_session)
+        session = await sessions.create(
+            db_session, user_id=user.id, performed_at=datetime.now(tz=UTC)
+        )
+        assert session.ended_at is None
+
+    async def test_a_backdated_session_is_closed_at_its_start(
+        self, db_session: AsyncSession
+    ) -> None:
+        user = await make_user(db_session)
+        performed = datetime.now(tz=UTC) - timedelta(days=90)
+        session = await sessions.create(db_session, user_id=user.id, performed_at=performed)
+        assert session.ended_at == performed
+        assert await sessions.get_active_session(db_session, user_id=user.id) is None
+
+    async def test_a_stated_duration_closes_the_session_arithmetically(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Even for a workout that started minutes ago: a duration means it is already over."""
+        user = await make_user(db_session)
+        performed = datetime.now(tz=UTC) - timedelta(minutes=10)
+        session = await sessions.create(
+            db_session, user_id=user.id, performed_at=performed, duration_minutes=45
+        )
+        assert session.ended_at == performed + timedelta(minutes=45)
+        assert session.duration_minutes == 45
+        assert await sessions.get_active_session(db_session, user_id=user.id) is None
+
+    async def test_the_window_is_rolling_not_a_calendar_day(self, db_session: AsyncSession) -> None:
+        """A workout started 6 h ago is live wherever the server is — no "is it today?"."""
+        user = await make_user(db_session)
+        session = await sessions.create(
+            db_session, user_id=user.id, performed_at=datetime.now(tz=UTC) - timedelta(hours=6)
+        )
+        assert session.ended_at is None
+        active = await sessions.get_active_session(db_session, user_id=user.id)
+        assert active is not None and active.id == session.id
+
+    async def test_an_old_open_session_is_never_active_even_if_recently_touched(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Rows created before the fix: adding a set kept resetting the last-activity clock."""
+        user = await make_user(db_session)
+        stale = WorkoutSession(
+            user_id=user.id, performed_at=datetime.now(tz=UTC) - timedelta(days=90)
+        )
+        db_session.add(stale)
+        await db_session.flush()
+
+        assert await sessions.get_active_session(db_session, user_id=user.id) is None
+        await db_session.refresh(stale)
+        assert stale.ended_at is not None, "and it is retired, not left dangling"
+
+
+class TestDurationOwnership:
+    """`finish_session` recomputed `duration_minutes` as (now - performed_at), overwriting a
+    value the caller had explicitly passed to `log_session`."""
+
+    async def test_an_explicit_duration_survives_finish(self, db_session: AsyncSession) -> None:
+        user = await make_user(db_session)
+        session = await sessions.create(
+            db_session,
+            user_id=user.id,
+            performed_at=datetime.now(tz=UTC) - timedelta(days=3),
+            duration_minutes=52,
+        )
+        # It is already finished, so this is a no-op — but force the path explicitly too.
+        session.ended_at = None
+        await db_session.flush()
+        finished = await sessions.finish_session(db_session, user_id=user.id, session_id=session.id)
+        assert finished.duration_minutes == 52, "the caller's own number, not wall-clock"
+        assert finished.ended_at is not None
+
+    async def test_a_derived_duration_is_clamped(self, db_session: AsyncSession) -> None:
+        """A session left open for days would otherwise record 136,070 minutes."""
+        user = await make_user(db_session)
+        session = WorkoutSession(
+            user_id=user.id, performed_at=datetime.now(tz=UTC) - timedelta(days=94)
+        )
+        db_session.add(session)
+        await db_session.flush()
+
+        finished = await sessions.finish_session(db_session, user_id=user.id, session_id=session.id)
+        ceiling = int(sessions.MAX_DERIVED_DURATION.total_seconds() // 60)
+        assert finished.duration_minutes == ceiling
+
+    async def test_a_normal_derived_duration_is_untouched(self, db_session: AsyncSession) -> None:
+        user = await make_user(db_session)
+        started = datetime.now(tz=UTC) - timedelta(minutes=75)
+        session = await sessions.create(db_session, user_id=user.id, performed_at=started)
+        finished = await sessions.finish_session(db_session, user_id=user.id, session_id=session.id)
+        assert 74 <= (finished.duration_minutes or 0) <= 76
+
+
+class TestUpdateRepairsASession:
+    """Correcting a session after the fact is what stops any of this being permanent."""
+
+    async def test_fixing_the_duration_moves_the_end_time(self, db_session: AsyncSession) -> None:
+        user = await make_user(db_session)
+        performed = datetime.now(tz=UTC) - timedelta(days=2)
+        session = await sessions.create(
+            db_session, user_id=user.id, performed_at=performed, duration_minutes=600
+        )
+        fixed = await sessions.update(
+            db_session,
+            user_id=user.id,
+            session_id=session.id,
+            changes={"duration_minutes": 60},
+        )
+        assert fixed.duration_minutes == 60
+        assert fixed.ended_at == performed + timedelta(minutes=60)
+
+    async def test_moving_the_date_carries_the_end_time_with_it(
+        self, db_session: AsyncSession
+    ) -> None:
+        user = await make_user(db_session)
+        session = await sessions.create(
+            db_session,
+            user_id=user.id,
+            performed_at=datetime.now(tz=UTC) - timedelta(days=2),
+            duration_minutes=45,
+        )
+        moved_to = datetime.now(tz=UTC) - timedelta(days=9)
+        fixed = await sessions.update(
+            db_session, user_id=user.id, session_id=session.id, changes={"performed_at": moved_to}
+        )
+        assert fixed.performed_at == moved_to
+        assert fixed.ended_at == moved_to + timedelta(minutes=45)
+
+    async def test_an_in_progress_session_keeps_its_null_end(
+        self, db_session: AsyncSession
+    ) -> None:
+        user = await make_user(db_session)
+        session = await sessions.create(
+            db_session, user_id=user.id, performed_at=datetime.now(tz=UTC)
+        )
+        fixed = await sessions.update(
+            db_session, user_id=user.id, session_id=session.id, changes={"title": "Push day"}
+        )
+        assert fixed.title == "Push day"
+        assert fixed.ended_at is None, "it ends when it ends"

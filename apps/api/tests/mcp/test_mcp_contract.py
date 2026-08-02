@@ -9,7 +9,7 @@ is a real contract break, not test noise.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -25,7 +25,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from tests._factories import make_custom_exercise, make_global_exercise
 from tests.mcp._mcphelp import bound
 
-_PERFORMED_AT = datetime(2026, 7, 1, 17, 30, tzinfo=UTC)
+# The shared session models a workout **in progress**, so it has to have started recently:
+# `sessions.create` now closes anything older than `STALE_AFTER` at creation, and
+# `get_active_session` will not return a session that started longer ago than a workout lasts.
+_NOW = datetime.now(tz=UTC)
+_PERFORMED_AT = _NOW - timedelta(minutes=30)
 
 
 @pytest.fixture
@@ -146,7 +150,8 @@ async def test_get_pr_history_matches_rest(
 async def test_volume_matches_rest(
     app_client: AsyncClient, db_session: AsyncSession, seeded: dict[str, Any]
 ) -> None:
-    frm, to = "2026-06-01T00:00:00Z", "2026-08-01T00:00:00Z"
+    frm = (_NOW - timedelta(days=30)).isoformat()
+    to = (_NOW + timedelta(days=1)).isoformat()
     rest = await _rest(app_client, "/api/analytics/volume", **{"from": frm, "to": to})
     with bound(db_session, seeded["user_id"]):
         mcp = await server.get_volume_summary(
@@ -183,7 +188,7 @@ async def test_log_session_then_rest_reads_it(
 ) -> None:
     with bound(db_session, seeded["user_id"]):
         created = await server.log_session(
-            performed_at=datetime(2026, 7, 2, 8, 0, tzinfo=UTC), type="lower", title="Legs"
+            performed_at=_NOW - timedelta(days=2), type="lower", title="Legs"
         )
     rest = await _rest(app_client, f"/api/sessions/{created['id']}")
     assert {k: rest[k] for k in created} == created  # every field the MCP write returned matches

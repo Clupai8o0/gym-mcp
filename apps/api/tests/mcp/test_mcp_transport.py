@@ -48,7 +48,8 @@ async def test_tools_list_exposes_the_full_surface(
     assert {"search_exercises", "log_session", "log_set", "get_prs", "get_volume_summary"} <= names
     assert {"get_active_session", "finish_session"} <= names  # Phase 11A lifecycle
     assert {"log_pr", "get_pr_history"} <= names  # manual PR entry
-    assert len(names) == 18
+    assert {"update_session"} <= names  # post-hoc session correction
+    assert len(names) == 19
 
 
 async def test_guide_resource_readable(mcp_http: AsyncClient, db_session: AsyncSession) -> None:

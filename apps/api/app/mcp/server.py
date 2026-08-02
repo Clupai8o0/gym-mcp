@@ -20,6 +20,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.server.transport_security import TransportSecuritySettings
 
+from app.core import errors
 from app.core.config import get_settings
 from app.mcp import runtime
 from app.mcp.guide import GUIDE
@@ -145,7 +146,18 @@ async def log_session(
     notes: str | None = None,
     duration_minutes: int | None = None,
 ) -> dict[str, Any]:
-    """Start/record a workout session (needs the write scope)."""
+    """Start or record a workout session (needs the write scope).
+
+    Two shapes, and the arguments decide which:
+
+    * **Starting one now** — pass ``performed_at`` as the current time and no duration. It stays
+      in progress until ``finish_session``.
+    * **Recording one that already happened** — pass its real ``performed_at``, and
+      ``duration_minutes`` if you know it. The session is stored already finished, so a workout
+      logged for last Tuesday never shows up as "in progress".
+
+    A stated ``duration_minutes`` is kept exactly; ``finish_session`` will not recompute over it.
+    """
     runtime.require_scope(WRITE_SCOPE)
     async with runtime.open_session() as db:
         row = await sessions.create(
@@ -185,6 +197,48 @@ async def list_sessions(
         limit=limit,
         offset=offset,
     ).model_dump(mode="json")
+
+
+@mcp.tool()
+async def update_session(
+    session_id: uuid.UUID,
+    title: str | None = None,
+    type: str | None = None,
+    notes: str | None = None,
+    performed_at: datetime | None = None,
+    duration_minutes: int | None = None,
+) -> dict[str, Any]:
+    """Correct a session after the fact (needs the write scope).
+
+    Fix a mistyped duration, move a workout to the day it actually happened, or add a note.
+    Only the arguments you pass change; **omitting one leaves it as it is**, so this cannot be
+    used to clear a field back to empty — pass an empty string for ``title``/``type``/``notes``
+    if that is what you want.
+
+    On a session that has already ended, changing ``performed_at`` or ``duration_minutes`` moves
+    its end time to match, so the record stays consistent.
+    """
+    runtime.require_scope(WRITE_SCOPE)
+    changes: dict[str, Any] = {
+        key: value
+        for key, value in (
+            ("title", title),
+            ("type", type),
+            ("notes", notes),
+            ("performed_at", performed_at),
+            ("duration_minutes", duration_minutes),
+        )
+        if value is not None
+    }
+    if not changes:
+        raise errors.validation(
+            "Pass at least one field to change: title, type, notes, performed_at, duration_minutes"
+        )
+    async with runtime.open_session() as db:
+        row = await sessions.update(
+            db, user_id=runtime.current_user_id(), session_id=session_id, changes=changes
+        )
+        return SessionOut.model_validate(row).model_dump(mode="json")
 
 
 @mcp.tool()
