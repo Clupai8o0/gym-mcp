@@ -176,9 +176,13 @@ string** — an easy Vercel mistake — was honoured rather than falling back. `
 means every RSC fetch resolves against a relative base, `getMe()` fails, and the shell redirects
 every signed-in page to login forever. Empty is never a URL anyone meant; both now use `||`.
 
-*(The audit also flagged `.env.production` pinning `API_INTERNAL_URL=http://localhost:8000`. No
-such file exists in the repo or the working tree — `apps/web/.gitignore` covers `.env*`, so if one
-was ever created locally it was never committed. Nothing to fix.)*
+*(The audit also flagged `.env.production` pinning `API_INTERNAL_URL=http://localhost:8000`. It
+**does** exist — at the repo root, not under `apps/web/` where this first went looking. It is
+gitignored and excluded from the Vercel upload, and Next only reads env files from the app
+directory, so it never reaches a real build. But its own first line reads "Local development",
+which makes the name a trap: `.env.production` is a Next.js magic filename, and one copy or
+symlink into `apps/web/` would point every production RSC fetch at localhost. **Rename it** to
+something inert.)*
 
 ### Net effect on one `/dashboard` render
 

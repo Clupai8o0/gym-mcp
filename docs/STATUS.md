@@ -1145,7 +1145,8 @@ Not required for Phase 0. Track here so they don't become surprise blockers:
 
 - **The `??` → `||` footgun** in `lib/api.ts` + `lib/env.ts`: an env var set to the empty string was
   honoured rather than falling back, which would have redirected every signed-in page to login
-  forever. (The audit's `.env.production` claim was checked — no such file exists in the repo.)
+  forever. (The audit's `.env.production` claim was checked and **it was right** — the file is at
+  the repo root, not under `apps/web/`. Harmless where it sits, but misnamed: see `13`.)
 
 - **Rejected after being built and measured — both were the audit's own proposals:**
   - **S4 `LazyMotion`** made `/log/[sessionId]` *bigger*: **79.6 → 86.0 KB gz**. The split
