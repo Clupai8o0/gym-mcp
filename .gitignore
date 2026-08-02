@@ -25,9 +25,11 @@ venv/
 .pytest_cache/
 
 # Environment (never commit real secrets; keep .env.example current)
-.env
-.env.local
-.env.*.local
+# Deny-by-default: every .env variant is ignored, then .env.example is re-included.
+# The old explicit list missed .env.production / .env.development, which are real
+# secret-bearing files — a deny-list here is one forgotten suffix away from a leak.
+.env*
+!.env.example
 
 # Vercel
 .vercel/
