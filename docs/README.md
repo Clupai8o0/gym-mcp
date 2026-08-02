@@ -39,6 +39,7 @@ Do not start coding until you have read both, plus the reference docs your phase
 | 10 | [`10-execution-plan.md`](./10-execution-plan.md) | **The phased roadmap** — the master checklist |
 | 11 | [`11-agent-workflow.md`](./11-agent-workflow.md) | Orchestrator/Codex/Antigravity roles & review gates |
 | 12 | [`12-conventions.md`](./12-conventions.md) | Code style, testing, commits, folder rules |
+| 13 | [`13-performance.md`](./13-performance.md) | Measured load-time audit + the ranked fix plan |
 
 ---
 

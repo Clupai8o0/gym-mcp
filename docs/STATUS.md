@@ -908,3 +908,105 @@ Not required for Phase 0. Track here so they don't become surprise blockers:
 - **On the requested skill:** there is no `emil-kowalski` skill in this environment. `docs/08`
   already names it as the motion rubric source **and codifies it** into eight checkable
   principles, so that plus the `craft` skill's 12 rules were used as the standard instead.
+
+## Phase 11G — Library scroll pagination + back-nav cost — DONE (built + self-verified)
+- **Branch/PR:** `phase-11e-desktop-home` (continues the 11-series slice)
+- **Scope:** the Library's prev/next pager became **scroll pagination**, and the two separate
+  reasons "tap an exercise, press Back" felt slow were fixed.
+- **What shipped:**
+  - **`components/library/InfiniteExerciseGrid.tsx`** (client). An `IntersectionObserver` with an
+    800px lead fetches the next page; the visible **Load more** button is the same action, kept in
+    the DOM so the list stays advanceable by keyboard and recoverable when a request fails.
+    `aria-live` count, offline-aware error + retry.
+  - **Each page after the first goes browser → API directly** (`lib/client.listExercises`), not
+    through the Next.js function — one hop instead of two, and no server re-render of the page
+    around it. The first 48 still arrive server-rendered, so the LCP tiles are untouched.
+  - **`IllustrationImage` split** into a synchronous `IllustrationView` (no server-only imports,
+    renders on either side of the boundary) and a thin async wrapper that reads the theme cookie.
+    No duplication. Side effect: the cookie is read **once per page instead of once per card** —
+    48 `await cookies()` calls became 1.
+  - **Back-nav, cause 1 — content was lost.** Loaded pages mirror into `sessionStorage` per filter
+    set, read back through `useSyncExternalStore` with a server snapshot (the pattern
+    `lib/hydration.ts` already established) — no `setState`-in-effect, no hydration mismatch.
+  - **Back-nav, cause 2 — the render was thrown away.** Every authenticated route is fully dynamic,
+    and Next's default `staleTimes.dynamic: 0` discards a segment the instant you navigate off it,
+    so Back re-ran the whole server render plus its API fan-out. Set to `30` in `next.config.ts`.
+  - **Stable catalog ordering.** `services/exercises.list_exercises` now orders by `(name, id)`.
+    `ORDER BY name` alone is not a total order and Postgres may break ties differently per query,
+    which under `LIMIT/OFFSET` duplicates and skips rows across page boundaries.
+- **DoD evidence:**
+  - `/library` returns 48 cards, `Showing 48 of 873`, and Load more in the **server HTML**.
+  - A full 19-page sweep through the API: **873 rows walked, 873 distinct, 0 duplicated, 0 missing**.
+  - The exact cross-origin page-2 request the scroll makes, including CORS preflight with
+    credentials, verified against a locally seeded 873-exercise catalog.
+  - `next build`, `eslint .`, `tsc --noEmit` clean. API suite green.
+- **Notes / decisions:**
+  - `staleTimes` is a **behaviour change, not a free win**: a write is no longer guaranteed visible
+    on the next route you open. `router.refresh()` was added at the three mutation sites that
+    needed it — `SessionStarter` (home and `/log` both render "workout in progress"), `SkillsBoard`
+    (home's "Top skill"), `ConnectionsList` (a revoked app would otherwise reappear). Logging a set
+    needs nothing; `SessionLogger` holds that in local state.
+  - The `(name, id)` ordering fix is **defensive** — the pinned dataset has zero duplicate names
+    today. It becomes reachable when a custom exercise shares a name with a global one.
+  - **Not verified:** the scroll-and-append interaction in a real browser (the Chrome extension was
+    not connected). Everything else was checked end to end over HTTP.
+
+## Phase 11H — Manual PR entry (`log_pr`) — DONE (built + self-verified)
+- **Branch/PR:** `phase-11e-desktop-home`
+- **Scope:** PRs could only be born inside `log_set`, which cannot represent an **estimated 1RM**, a
+  **hold timed outside a session**, or a **PR migrated from another app**. Added hand entry, and
+  fixed the PR-history read path that made such records invisible.
+- **What shipped:**
+  - **MCP tool `log_pr`** (`exercise`, `pr_type`, `value`, `achieved_at`, `session_id?`, `notes?`),
+    write-scoped, resolving `exercise` through the same `resolve_ref` as `log_set`. Plus its REST
+    twin **`POST /api/prs`** — lockstep means a tool cannot exist without one, and the contract test
+    asserts both surfaces return the identical `PrOut`.
+  - **Migration `0006_manual_prs`:** `personal_records.source` (`Text` + CHECK, matching how
+    `pr_type` is already done rather than introducing the first PG enum), `NOT NULL DEFAULT 'auto'`
+    — every existing row is auto-detected by definition, so the default *is* the backfill.
+  - **`personal_records_history`**, replacing the old read path that scanned `exercise_sets` for
+    `is_pr` and therefore could never show a manual entry. Backfilled from those same sets.
+  - **`get_pr_history` / `GET /api/prs/history`** now return interleaved manual + auto entries, each
+    tagged with its `source`. `get_prs` returns `source` on every row.
+- **DoD evidence:**
+  - **241 passed** (the 3 failures are the pre-existing image/chroma ones, confirmed by stash to
+    predate this work). ruff, black, `mypy --strict`, and the architecture guard clean.
+    `alembic check` confirms the migration matches the models.
+  - **Backfill proven against real pre-migration data:** downgraded to `0005`, inserted PR-flagged
+    sets, upgraded — a `first_log` set carrying only `hold_seconds` correctly collapsed to
+    `hold_time`/60s, and the non-PR set was excluded.
+  - **The precedence rule, end to end over HTTP:** manual 140kg survives an 80kg set; a 150kg set
+    reclaims it and flips `source` to `auto`; history reads
+    `140.0 manual / 80.0 auto / 150.0 auto` chronologically. Validation returns 422 with
+    `pr_type must be one of weight, reps, hold_time`; an unresolvable name gives a clean 404.
+- **Notes / decisions:**
+  - **The recompute would have deleted manual PRs.** `_recompute` re-derives everything from the
+    sets on every log/edit/delete, and `_sync_records` deletes any record with no supporting set —
+    exactly what a manual PR is. The new rule is scoped tightly: a record with `source='auto'` keeps
+    the existing authoritative behaviour (preserving the module's "log/edit/delete can never drift"
+    invariant); a `manual` record is only overwritten by a set that **strictly beats** it, and is
+    never deleted.
+  - **Set-level `is_pr` flags are untouched.** A manual estimated 1RM does not suppress the
+    celebration when you beat your heaviest *logged* set. `personal_records` answers "what is my
+    best"; the set flags describe the training log.
+  - **Auto history is derived, not appended.** Appending on a path that re-runs on every edit would
+    stack duplicates and leave records of PRs that no longer exist. Auto rows are rebuilt wholesale
+    per exercise on each set write (partial unique index on `(set_id, pr_type)` as backstop);
+    manual rows are genuinely append-only and the rebuild never touches them.
+  - **`PrHistoryOut.items` changed shape** from `SetOut` to a new `PrHistoryItem`. Unavoidable — a
+    manual record has no set, which is *why* it was invisible. The web has generated types for that
+    endpoint but never calls it, so the break is contained to MCP. `openapi.json` + `api-types.ts`
+    regenerated (additive, +184/−5).
+  - No `unit` parameter: it follows from `pr_type` via `PR_UNITS` (kg / reps / s).
+
+## Performance audit — 2026-08-02
+- **Result:** `docs/13-performance.md` — measured against production by two independent passes
+  (a 36-agent adversarially-verified sweep, and a separate Codex CLI audit).
+- **The finding:** **the Vercel functions run in `iad1` and Neon is in `ap-southeast-2`.**
+  Confirmed first-hand: `x-vercel-id: syd1::iad1::` on both projects; one `SELECT 1` costs
+  ~1.0–1.25s (six Pacific crossings, five of them transaction framing); one home render issues
+  **ten** API calls, three of them serialised in the `(app)` layout.
+- **The fix, unstarted:** pin both projects to `syd1` — ~3.3s off the front door, against ~400ms
+  for every other item on the list combined. See `13` for the ranked plan, the rejected proposals
+  (`cssChunking` is a literal no-op under Turbopack; the naive `/api/home` aggregate is likely
+  *slower*), and the open questions.
