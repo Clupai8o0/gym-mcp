@@ -1,0 +1,35 @@
+/*
+ * Resting state is deliberately the visible one. Everything below is additive, so any browser
+ * that cannot run a view-progress timeline shows the content immediately instead of hiding it
+ * behind an animation that will never fire.
+ */
+.reveal {
+  opacity: 1;
+}
+
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .reveal {
+      animation: reveal-in var(--dur-slow) var(--ease-out) both;
+      animation-delay: var(--reveal-delay, 0ms);
+      animation-timeline: view();
+      /*
+       * Run the reveal across the band from "entering the viewport" to 25% up it, then hold.
+       * `cover 0%` would start the animation while the element is still fully below the fold,
+       * so the entrance would be finished before it was ever on screen.
+       */
+      animation-range: entry 10% cover 25%;
+    }
+  }
+}
+
+@keyframes reveal-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--space-4));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

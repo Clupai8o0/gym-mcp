@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, Geist_Mono } from "next/font/google";
 
 import { ServiceWorkerRegistrar } from "@/components/pwa/ServiceWorkerRegistrar";
+import { BASE_URL } from "@/lib/env";
 import { THEME_BOOTSTRAP } from "@/lib/theme";
 import "./globals.css";
 
@@ -21,12 +22,15 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  // Without this, every relative `alternates.canonical` and Open Graph URL resolves against
+  // localhost in production. It has to be an absolute origin.
+  metadataBase: new URL(BASE_URL),
   title: {
     default: "Tempo",
     template: "%s · Tempo",
   },
   description:
-    "Personal-first, share-ready workout app — an illustrated gym library, fast logging, and a progress dashboard.",
+    "Personal-first, share-ready workout app: an illustrated gym library, fast logging, and a progress dashboard.",
   manifest: "/manifest.webmanifest",
   // The SVG tab favicon scales everywhere; the PNGs cover install surfaces that ignore SVG
   // (Android home screen, iOS apple-touch — which won't render an SVG at all).

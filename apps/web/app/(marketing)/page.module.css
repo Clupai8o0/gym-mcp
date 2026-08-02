@@ -4,15 +4,50 @@
   flex-direction: column;
 }
 
+/* Every band shares one measure and one gutter. */
+.topbar,
+.stats,
+.feature,
+.steps,
+.chat,
+.faq,
+.finalCta,
+.footer {
+  max-width: var(--container);
+  width: 100%;
+  margin-inline: auto;
+  padding-inline: var(--space-6);
+}
+
+/*
+ * Off-canvas rather than `display: none`, which would take it out of the tab order and defeat
+ * the point. It comes back into view only on keyboard focus.
+ */
+.skipLink {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  z-index: 1;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background-color: var(--surface);
+  color: var(--text);
+  font-size: var(--text-sm);
+  transform: translateY(-200%);
+}
+
+.skipLink:focus-visible {
+  transform: translateY(0);
+}
+
+/* ── Top bar ─────────────────────────────────────────────────────────────────── */
+
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   height: var(--nav-height);
-  max-width: var(--container);
-  width: 100%;
-  margin-inline: auto;
-  padding-inline: var(--space-6);
 }
 
 .logo {
@@ -23,91 +58,457 @@
   font-weight: var(--weight-medium);
 }
 
+.nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+}
+
+.navLink {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  transition: color var(--dur-fast) var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .navLink:hover {
+    color: var(--text);
+  }
+}
+
+/* ── Hero ────────────────────────────────────────────────────────────────────── */
+
 .hero {
+  position: relative;
+  isolation: isolate;
   max-width: var(--container);
   width: 100%;
   margin-inline: auto;
-  padding: var(--space-24) var(--space-6) var(--space-16);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-  align-items: flex-start;
+  padding: var(--space-12) var(--space-6) var(--space-16);
 }
 
-.title {
+/*
+ * The data band. Fading at both edges is the whole legibility budget for this hero: the field
+ * resolves out of the canvas at the top and dissolves back into it exactly where the headline
+ * begins, so the pattern never competes with type for contrast.
+ */
+.field {
+  position: absolute;
+  inset-inline: var(--space-6);
+  top: 0;
+  height: 20rem;
+  z-index: -1;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 30%,
+    black 70%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(to bottom, transparent 0%, black 30%, black 70%, transparent 100%);
+}
+
+.heroCopy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-5);
+  margin-top: 15rem;
+}
+
+.heroEyebrow {
+  opacity: 0;
+  animation: hero-fade var(--dur-slow) var(--ease-out) forwards;
+}
+
+.heroTitle {
   font-size: var(--text-5xl);
   letter-spacing: var(--tracking-tighter);
   line-height: var(--leading-tight);
   max-width: 16ch;
+  opacity: 0;
+  animation: hero-fade var(--dur-slow) var(--ease-out) 60ms forwards;
 }
 
-.lede {
-  max-width: 56ch;
+.heroLede {
+  max-width: 54ch;
   color: var(--text-secondary);
   font-size: var(--text-lg);
   line-height: var(--leading-relaxed);
+  opacity: 0;
+  animation: hero-fade var(--dur-slow) var(--ease-out) 120ms forwards;
 }
 
-.cta {
+.heroCta {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
-  margin-top: var(--space-3);
+  margin-top: var(--space-2);
+  opacity: 0;
+  animation: hero-fade var(--dur-slow) var(--ease-out) 180ms forwards;
 }
 
-.features {
-  max-width: var(--container);
-  width: 100%;
-  margin-inline: auto;
-  padding: var(--space-8) var(--space-6) var(--space-24);
+@keyframes hero-fade {
+  from {
+    opacity: 0;
+    transform: translateY(var(--space-2));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── Stats ───────────────────────────────────────────────────────────────────── */
+
+.stats {
+  padding-block: var(--space-12);
+}
+
+.statsList {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-6);
+  padding-block: var(--space-6);
+  border-block: 1px solid var(--border);
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.statLabel {
+  color: var(--text-muted);
+}
+
+.statValue {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+}
+
+/* ── Feature bands ───────────────────────────────────────────────────────────── */
+
+.feature {
+  padding-block: var(--space-16);
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: var(--space-12);
+  align-items: start;
+  scroll-margin-top: var(--space-8);
+}
+
+.featureCopy {
+  display: flex;
+  flex-direction: column;
   gap: var(--space-4);
 }
 
-.feature {
-  height: 100%;
+.featureTitle {
+  font-size: var(--text-3xl);
+  letter-spacing: var(--tracking-tighter);
+  max-width: 20ch;
+}
+
+.featureBody {
+  max-width: 62ch;
+  color: var(--text-secondary);
+  line-height: var(--leading-relaxed);
+}
+
+.featurePoints {
+  list-style: none;
+  padding: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
 }
 
-.featureTitle {
+/* Hairline-ruled list. The leading accent tick is the only ornament on these bands. */
+.featurePoint {
+  position: relative;
+  padding: var(--space-3) 0 var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+}
+
+.featurePoint::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: calc(var(--space-3) + 0.5em);
+  width: var(--space-3);
+  height: 1px;
+  background-color: var(--accent);
+}
+
+/* ── Section furniture ───────────────────────────────────────────────────────── */
+
+.sectionTitle {
+  font-size: var(--text-3xl);
+  letter-spacing: var(--tracking-tighter);
+  max-width: 20ch;
+}
+
+/* ── Steps ───────────────────────────────────────────────────────────────────── */
+
+.steps {
+  padding-block: var(--space-16);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-10);
+}
+
+.stepsHead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.stepsList {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-8);
+}
+
+.step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border);
+}
+
+/*
+ * Deliberately not `--accent`. The light-mode accent is #d95c0a, which is 3.83:1 on white: it
+ * clears the 3:1 gate for non-text (so the tick on `.featurePoint::before` is fine) but not the
+ * 4.5:1 a 12px label needs. `--text-muted` is tuned to clear it on both surfaces.
+ */
+.stepNumber {
+  color: var(--text-muted);
+}
+
+.stepTitle {
   font-size: var(--text-xl);
   letter-spacing: var(--tracking-tight);
 }
 
-.featureBody {
+.stepBody {
   color: var(--text-muted);
   font-size: var(--text-sm);
   line-height: var(--leading-relaxed);
 }
 
+/* ── Chat ────────────────────────────────────────────────────────────────────── */
+
+.chat {
+  padding-block: var(--space-16);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 26rem);
+  gap: var(--space-12);
+  align-items: center;
+  scroll-margin-top: var(--space-8);
+}
+
+.chatCopy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.chatDemo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.chatTurn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+}
+
+.chatTurnReply {
+  padding: var(--space-4);
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-2);
+  color: var(--text);
+}
+
+.chatWho {
+  color: var(--text-muted);
+}
+
+/* ── FAQ ─────────────────────────────────────────────────────────────────────── */
+
+.faq {
+  padding-block: var(--space-16);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: var(--space-12);
+  align-items: start;
+  scroll-margin-top: var(--space-8);
+}
+
+.faqHead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  position: sticky;
+  top: var(--space-8);
+}
+
+.faqList {
+  display: flex;
+  flex-direction: column;
+}
+
+.faqItem {
+  padding-block: var(--space-6);
+  border-bottom: 1px solid var(--border);
+}
+
+.faqItem:first-child {
+  padding-top: 0;
+}
+
+.faqQuestion {
+  font-size: var(--text-lg);
+  letter-spacing: var(--tracking-tight);
+  margin-bottom: var(--space-3);
+}
+
+.faqAnswer {
+  margin: 0;
+  max-width: 68ch;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+}
+
+/* ── Final CTA ───────────────────────────────────────────────────────────────── */
+
+.finalCta {
+  padding-block: var(--space-20);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-5);
+  text-align: center;
+  border-top: 1px solid var(--border);
+}
+
+.finalCtaTitle {
+  font-size: var(--text-4xl);
+  letter-spacing: var(--tracking-tighter);
+}
+
+.finalCtaBody {
+  max-width: 44ch;
+  color: var(--text-secondary);
+  font-size: var(--text-lg);
+  line-height: var(--leading-relaxed);
+}
+
+/* ── Footer ──────────────────────────────────────────────────────────────────── */
+
 .footer {
   margin-top: auto;
   border-top: 1px solid var(--border);
-  max-width: var(--container);
-  width: 100%;
-  margin-inline: auto;
-  padding: var(--space-8) var(--space-6);
+  padding-block: var(--space-8);
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
   gap: var(--space-4);
   color: var(--text-secondary);
   font-size: var(--text-sm);
+}
+
+.footerBrand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.footerNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
 }
 
 .footerMuted {
   color: var(--text-muted);
 }
 
-@media (max-width: 860px) {
-  .features {
-    grid-template-columns: 1fr;
+/* ── Responsive ──────────────────────────────────────────────────────────────── */
+
+@media (max-width: 1000px) {
+  .feature,
+  .chat,
+  .faq {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-8);
   }
-  .hero {
-    padding-top: var(--space-16);
+  .faqHead {
+    position: static;
   }
-  .title {
+  .stepsList {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-6);
+  }
+}
+
+@media (max-width: 900px) {
+  .field {
+    height: 15rem;
+  }
+  .heroCopy {
+    margin-top: 11rem;
+  }
+  .heroTitle {
     font-size: var(--text-4xl);
+  }
+  .statsList {
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-5);
+  }
+  .finalCtaTitle {
+    font-size: var(--text-3xl);
+  }
+}
+
+@media (max-width: 720px) {
+  /* The anchor links collapse; the Sign in button stays. */
+  .nav .navLink {
+    display: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .field {
+    height: 11rem;
+  }
+  .heroCopy {
+    margin-top: 8rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .heroEyebrow,
+  .heroTitle,
+  .heroLede,
+  .heroCta {
+    opacity: 1;
+    transform: none;
   }
 }

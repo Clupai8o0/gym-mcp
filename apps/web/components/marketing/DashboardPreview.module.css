@@ -1,0 +1,199 @@
+.section {
+  max-width: var(--container);
+  width: 100%;
+  margin-inline: auto;
+  padding: var(--space-20) var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-16);
+  scroll-margin-top: var(--space-8);
+}
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: 60ch;
+}
+
+.title {
+  font-size: var(--text-4xl);
+  letter-spacing: var(--tracking-tighter);
+}
+
+.lede {
+  color: var(--text-secondary);
+  font-size: var(--text-lg);
+  line-height: var(--leading-relaxed);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-12) var(--space-8);
+}
+
+.cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+.cellCopy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.cellTitle {
+  font-size: var(--text-xl);
+  letter-spacing: var(--tracking-tight);
+}
+
+.cellBody {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+}
+
+/* Pushes every surface to the bottom of its cell so the four line up despite unequal copy. */
+.cellSurface {
+  margin-top: auto;
+  min-width: 0;
+}
+
+.disclosure {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--border);
+}
+
+/* ── Panels ──────────────────────────────────────────────────────────────────── */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.records {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.record {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-2);
+}
+
+.recordHead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.recordName {
+  font-size: var(--text-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recordLabel {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.recordMeta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1);
+  white-space: nowrap;
+}
+
+/*
+ * `--text`, matching `PrList.module.css`. The app renders record values in ink, not in the
+ * success colour, and this panel claims to show the real interface: tinting them green here
+ * would be exactly the drift that rendering the actual components is meant to prevent.
+ */
+.recordValue {
+  font-size: var(--text-lg);
+  letter-spacing: var(--tracking-tight);
+  color: var(--text);
+}
+
+.recordWhen {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.skills {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-5);
+}
+
+.skill {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.skillBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.skillName {
+  font-size: var(--text-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skillStep {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-12);
+  }
+  .title {
+    font-size: var(--text-3xl);
+  }
+}
+
+@media (max-width: 560px) {
+  .skills {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
