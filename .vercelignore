@@ -1,0 +1,31 @@
+# Files the CLI must not upload when deploying from the monorepo root.
+#
+# Vercel deploys both projects from here (each with its own Root Directory), so the whole tree is
+# packed and sent. Without this list the upload carries local build and dev caches — a `next dev`
+# turbopack cache and a Turbo cache blob here were each >100 MB, which trips the CLI's per-file
+# limit and fails the deploy outright. They only appear after building locally, which is why this
+# surfaced late rather than on the first deploy.
+#
+# Everything below is regenerated on the build machine (Vercel runs its own install, `uv sync`
+# and build), so excluding it changes nothing about the deployed output — it only shrinks and
+# speeds up the upload.
+
+# JS deps + build output
+node_modules
+.next
+.turbo
+*.tsbuildinfo
+
+# Python virtualenvs (Vercel installs from pyproject.toml + uv.lock)
+.venv
+__pycache__
+*.py[cod]
+
+# Tool caches
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Never ship secrets, whatever the shape (mirrors .gitignore's deny-by-default rule)
+.env*
+!.env.example
