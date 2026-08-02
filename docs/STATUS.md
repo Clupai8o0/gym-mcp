@@ -1010,3 +1010,37 @@ Not required for Phase 0. Track here so they don't become surprise blockers:
   for every other item on the list combined. See `13` for the ranked plan, the rejected proposals
   (`cssChunking` is a literal no-op under Turbopack; the naive `/api/home` aggregate is likely
   *slower*), and the open questions.
+
+## Phase 11I — Fix: the PR verdict ignored hand-entered records — DONE (reproduced, fixed, re-verified)
+- **Branch/PR:** `phase-11e-desktop-home`
+- **Reported:** `log_pr(squat, weight, 100)` then `log_set(squat, 60kg)` returned
+  `{is_pr: true, previous_best: null}`, stamped `set.is_pr`, and inserted a 60kg `auto` history
+  row — while `personal_records` correctly stayed at 100. The guard worked; the verdict did not.
+- **Root cause:** `_recompute` derived its running best from the **logged sets alone**. It never
+  consulted the standing record, so a hand-entered PR was invisible to `_evaluate` and to the
+  chronology, even though `_sync_records` refused to lower the record itself.
+- **The fix, and the trap inside it.** The obvious repair — seed the replay from
+  `personal_records` rows whose `source` is `manual` — is wrong, and only fails on the *second*
+  set. The moment a logged set beats the manual record, `source` flips to `auto`; the seed then
+  disappears, and the next recompute **retroactively re-promotes every set that was below the
+  record all along**, producing a history reading `100, 60, 100, 110`. Caught by the monotonicity
+  test, not by the four cases in the report.
+  - The replay now walks the sets **and the `manual` rows of `personal_records_history`** in one
+    timeline, ordered by instant, manual first on a tie. Those rows are append-only and never
+    change source, so the floor is durable. Auto history is still derived from the sets alone —
+    seeding *it* would stop the replay regenerating rows after an edit or delete.
+  - `previous_best` is now reported on non-PR sets too, resolved from the metric the set actually
+    contested (`_contested_metric`, mirroring `_evaluate`'s priority).
+  - Verdict, `personal_records` and `personal_records_history` are written in the same branch, so
+    they cannot disagree about what counted.
+- **DoD evidence:** **249 passed** (the 3 failures remain the pre-existing image/chroma ones).
+  8 new tests including `TestVerdictSeesManualRecords` and a monotonicity invariant over a mixed
+  manual/auto run across two exercises. The reported repro, live over HTTP:
+  `is_pr=False, pr_type=None, previous_best=100.0`, set unstamped, record `100.0 manual`,
+  history `[(100.0, 'manual')]`. Then 105kg reclaims with `previous_best=100.0`, and a following
+  70kg set leaves history `[(100.0,'manual'), (105.0,'auto')]` — ascending, with no
+  re-promotion of the earlier sub-record sets.
+- **Notes:** no schema change — the fix is a read of a table `0006` already created.
+  Two of the report's five test cases (`set 60` and `set 100`) only hold for a **weight-only**
+  set; adding reps makes them a genuine *reps* PR, since the floor is per-metric and no reps
+  record was standing. Covered explicitly by `test_reps_is_judged_separately`.

@@ -15,6 +15,24 @@ Detection priority for each set (ported from the legacy app, now keyed on ``exer
 
 A metric only counts once it has appeared: logging a heavier weight-only set never
 registers a weight PR (weight PRs require reps), matching the legacy contract.
+
+**Hand-entered records are a floor.** The replay walks the logged sets *and* the ``manual`` rows
+of ``personal_records_history`` in one timeline, so a set is judged against whatever record was
+standing at its moment rather than merely against prior sets. Without it, the first set after a
+manual PR claimed ``is_pr=True`` with ``previous_best=None`` and wrote a history entry *below*
+the standing record.
+
+Reading the floor from the *history* table rather than from ``personal_records.source`` is the
+part that is easy to get wrong: the moment a logged set beats a manual record, ``source`` flips
+to ``auto`` and a floor read from there vanishes — the next recompute then retroactively
+re-promotes every set that was below the record all along, and the chronology reads
+100, 60, 100, 110. History rows are append-only and never change source, so the floor is durable.
+
+Auto history is still derived from the sets alone; seeding it would stop the replay regenerating
+those rows after an edit or delete.
+
+Verdict, ``personal_records`` and ``personal_records_history`` are all written in the same
+branch of :func:`_recompute`. They cannot disagree about what counted as a PR.
 """
 
 from __future__ import annotations
@@ -188,6 +206,68 @@ def _concrete_metric(
     return "hold_time"
 
 
+def _contested_metric(weight: Decimal | None, reps: int | None, hold: int | None) -> str | None:
+    """The metric a set is primarily judged on, in :func:`_evaluate`'s own priority order.
+
+    Used to answer "what was the record you failed to beat?" for a set that is *not* a PR.
+    ``None`` only for a set carrying no measurement at all, which ``_require_measurement``
+    already rejects on the way in.
+    """
+    if hold is not None:
+        return "hold_time"
+    if weight is not None:
+        return "weight"
+    if reps is not None:
+        return "reps"
+    return None
+
+
+async def _load_manual_marks(
+    db: AsyncSession, user_id: uuid.UUID, exercise_id: uuid.UUID
+) -> Sequence[PersonalRecordHistory]:
+    """The hand-entered records for one (user, exercise), oldest first.
+
+    These are the floors the replay judges logged sets against. They come from
+    ``personal_records_history`` rather than ``personal_records`` because that table is
+    append-only: a row stays ``manual`` forever, so the floor survives auto-detection reclaiming
+    the current record.
+    """
+    return (
+        (
+            await db.execute(
+                select(PersonalRecordHistory)
+                .where(
+                    PersonalRecordHistory.user_id == user_id,
+                    PersonalRecordHistory.exercise_id == exercise_id,
+                    PersonalRecordHistory.source == "manual",
+                )
+                .order_by(PersonalRecordHistory.achieved_at, PersonalRecordHistory.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+async def _load_records(
+    db: AsyncSession, user_id: uuid.UUID, exercise_id: uuid.UUID
+) -> dict[str, PersonalRecord]:
+    """The stored records for one (user, exercise), keyed by metric."""
+    return {
+        pr.pr_type: pr
+        for pr in (
+            await db.execute(
+                select(PersonalRecord).where(
+                    PersonalRecord.user_id == user_id,
+                    PersonalRecord.exercise_id == exercise_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    }
+
+
 async def _recompute(
     db: AsyncSession, user_id: uuid.UUID, exercise_id: uuid.UUID
 ) -> dict[uuid.UUID, PrOutcome]:
@@ -210,6 +290,9 @@ async def _recompute(
         )
     ).all()
 
+    existing = await _load_records(db, user_id, exercise_id)
+    marks = await _load_manual_marks(db, user_id, exercise_id)
+
     best: dict[str, Decimal | None] = {"weight": None, "reps": None, "hold_time": None}
     records: dict[str, _RecordState] = {}
     any_record_yet = False
@@ -217,7 +300,34 @@ async def _recompute(
     # The chronology, rebuilt alongside the flags so the two can never disagree.
     chronology: list[_HistoryEntry] = []
 
-    for exercise_set, performed_at in rows:
+    # Replay the sets **and the hand-entered records together**, in one timeline.
+    #
+    # A manual record is a claim about a moment, so it belongs in the chronology at that moment,
+    # not as a lump seeded at the start. Seeding from `personal_records.source == 'manual'` looks
+    # equivalent and is not: the moment a logged set beats the record, `source` flips to `auto`,
+    # the seed disappears, and the next recompute retroactively re-promotes the sets that were
+    # below the record all along — producing a history that goes 100, 60, 100, 110.
+    #
+    # Replaying `personal_records_history` instead makes the floor durable, because those rows are
+    # append-only and never change source. Auto rows are still derived from the sets alone.
+    #
+    # At an equal instant a manual mark sorts **first**: a record you entered for a moment was
+    # standing during it, so a set logged at that same moment has to beat it.
+    timeline: list[tuple[Any, int, PersonalRecordHistory | None, ExerciseSet | None]] = [
+        (mark.achieved_at, 0, mark, None) for mark in marks
+    ]
+    timeline += [(performed_at, 1, None, row) for row, performed_at in rows]
+    timeline.sort(key=lambda entry: (entry[0], entry[1]))
+
+    for moment, kind, mark, row in timeline:
+        if kind == 0 and mark is not None:
+            best[mark.pr_type] = mark.value
+            any_record_yet = True
+            continue
+
+        if row is None:  # unreachable; keeps the narrowing without relying on `assert`
+            continue
+        exercise_set, performed_at = row, moment
         weight = exercise_set.weight_kg
         reps = exercise_set.reps
         hold = exercise_set.hold_seconds
@@ -233,9 +343,15 @@ async def _recompute(
         )
 
         if verdict is None:
+            # Not a PR: no flag, **no history row**, and no record update — the three move
+            # together. Still report the record it failed to beat, so a caller can say "60kg,
+            # your best is 100" instead of silently nothing.
+            contested = _contested_metric(weight, reps, hold)
             exercise_set.is_pr = False
             exercise_set.pr_type = None
-            outcomes[exercise_set.id] = PrOutcome(False, None, None, None)
+            outcomes[exercise_set.id] = PrOutcome(
+                False, None, best[contested] if contested else None, None
+            )
             continue
 
         pr_type, new_value = verdict
@@ -261,7 +377,9 @@ async def _recompute(
             )
         )
 
-    await _sync_records(db, user_id, exercise_id, records)
+    # `records` and `chronology` are populated in the same branch, so the stored best and the
+    # chronology can never disagree about what counted as a PR.
+    await _sync_records(db, user_id, exercise_id, records, existing)
     await _sync_auto_history(db, user_id, exercise_id, chronology)
     await db.flush()
     return outcomes
@@ -272,19 +390,8 @@ async def _sync_records(
     user_id: uuid.UUID,
     exercise_id: uuid.UUID,
     records: Mapping[str, _RecordState],
+    existing: Mapping[str, PersonalRecord],
 ) -> None:
-    existing = {
-        pr.pr_type: pr
-        for pr in (
-            await db.execute(
-                select(PersonalRecord).where(
-                    PersonalRecord.user_id == user_id, PersonalRecord.exercise_id == exercise_id
-                )
-            )
-        )
-        .scalars()
-        .all()
-    }
     for metric in _METRICS:
         state = records.get(metric)
         current = existing.get(metric)
@@ -294,6 +401,10 @@ async def _sync_records(
         # logged set that *strictly beats* the stated value replaces it, and nothing deletes it.
         # (A record with no supporting set is exactly what manual entry is for — an estimated 1RM,
         # a hold timed outside a session, a PR carried over from another app.)
+        #
+        # `_recompute` now seeds the replay from this same value, so anything reaching `state` has
+        # already cleared it. The comparison stays as the backstop that keeps this invariant true
+        # locally rather than only by agreement with a caller forty lines away.
         if current is not None and current.source == "manual":
             if state is not None and state.value > current.value:
                 current.value = state.value
