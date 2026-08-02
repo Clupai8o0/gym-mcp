@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { Badge, Button, Card, EmptyState, LocalTime } from "@/components/ui";
 import { ClientApiError, NetworkError, revokeConnection } from "@/lib/client";
@@ -13,6 +14,7 @@ import styles from "./ConnectionsList.module.css";
  * row optimistically once the API confirms the tokens are revoked. Empty state when nothing's linked.
  */
 export function ConnectionsList({ connections }: { connections: Connection[] }) {
+  const router = useRouter();
   const [items, setItems] = useState(connections);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -32,6 +34,10 @@ export function ConnectionsList({ connections }: { connections: Connection[] }) 
       await revokeConnection(clientId);
       setItems((prev) => prev.filter((item) => item.client_id !== clientId));
       setConfirming(null);
+      // The row is gone from this list optimistically, but the *server* render of this page is
+      // still cached by the client router (`staleTimes.dynamic`, next.config.ts) — navigating
+      // away and back would resurrect the revoked app. Invalidate it.
+      router.refresh();
     } catch (caught) {
       if (caught instanceof NetworkError) {
         setError("You appear to be offline — couldn't revoke. Try again.");

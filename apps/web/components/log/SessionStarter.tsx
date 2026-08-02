@@ -43,6 +43,11 @@ export function SessionStarter({
         title: title.trim() || null,
       });
       const suffix = exerciseSlug ? `?add=${encodeURIComponent(exerciseSlug)}` : "";
+      // Drop the client router's copy of every route we're leaving behind *before* navigating.
+      // Home and `/log` both render "is a workout in progress?" from the server, and the shell's
+      // session bar with them; without this they'd answer from a render that predates this
+      // workout for as long as `staleTimes.dynamic` allows (next.config.ts).
+      router.refresh();
       router.push(`/log/${session.id}${suffix}`);
     } catch {
       setError("Couldn’t start a workout. Check your connection and try again.");

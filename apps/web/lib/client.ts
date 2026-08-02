@@ -81,11 +81,40 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   return (await response.json()) as T;
 }
 
-// ── Exercises (interactive search for the picker) ──────────────────────────────────────────
+// ── Exercises (interactive search + the Library's scroll pagination) ────────────────────────
+
+/** The catalog filters the Library reflects in the URL, plus a window into the result set. */
+export interface ExerciseQuery {
+  q?: string;
+  muscle?: string;
+  equipment?: string;
+  category?: string;
+  level?: string;
+  limit?: number;
+  offset?: number;
+}
+
+/**
+ * One page of the catalog, fetched **from the browser**.
+ *
+ * The server twin of this (`lib/api.ts`) goes through the Next.js function; this one talks to the
+ * API directly, so a scroll-triggered page is a single hop instead of browser → Next → API.
+ */
+export async function listExercises(
+  query: ExerciseQuery = {},
+  signal?: AbortSignal,
+): Promise<ExerciseList> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value === undefined || value === null || value === "") continue;
+    params.set(key, String(value));
+  }
+  const qs = params.toString();
+  return request<ExerciseList>(`/api/exercises${qs ? `?${qs}` : ""}`, { signal });
+}
+
 export async function searchExercises(query: string, signal?: AbortSignal): Promise<ExerciseList> {
-  const params = new URLSearchParams({ limit: "20" });
-  if (query.trim()) params.set("q", query.trim());
-  return request<ExerciseList>(`/api/exercises?${params.toString()}`, { signal });
+  return listExercises({ q: query.trim() || undefined, limit: 20 }, signal);
 }
 
 export async function getExerciseBySlug(slug: string): Promise<ExerciseDetail> {

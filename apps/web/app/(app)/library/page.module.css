@@ -21,14 +21,5 @@
   line-height: var(--leading-relaxed);
 }
 
-.count {
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-}
-
-.pagination {
-  display: flex;
-  justify-content: center;
-  gap: var(--space-3);
-  margin-top: var(--space-4);
-}
+/* The result count and the load-more control belong to the grid now — see
+   `components/library/InfiniteExerciseGrid.module.css`. */

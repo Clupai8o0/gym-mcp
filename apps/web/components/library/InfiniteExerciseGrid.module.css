@@ -1,0 +1,34 @@
+.count {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  /* The tab bar sits in the thumb arc on mobile; keep the control clear of it. */
+  padding-bottom: var(--space-2);
+}
+
+/* The trip wire the observer watches. No size, no ink, no semantics. */
+.sentinel {
+  width: 100%;
+  height: 1px;
+}
+
+.error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  text-align: center;
+}
+
+.errorText {
+  max-width: 40ch;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}

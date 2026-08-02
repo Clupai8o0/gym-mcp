@@ -71,8 +71,15 @@ async def list_exercises(
         await db.execute(select(func.count()).select_from(base.order_by(None).subquery()))
     ).scalar_one()
 
+    # ``id`` is the tiebreak, not decoration: catalog names are not unique (a user's custom row may
+    # share a name with a global one), and ``ORDER BY`` on a non-unique key leaves Postgres free to
+    # return tied rows in a different order per query. Under ``LIMIT/OFFSET`` paging that silently
+    # duplicates and skips rows across page boundaries — which the Library's scroll pagination,
+    # stitching pages into one list, would surface immediately.
     rows = (
-        (await db.execute(base.order_by(Exercise.name).limit(limit).offset(offset))).scalars().all()
+        (await db.execute(base.order_by(Exercise.name, Exercise.id).limit(limit).offset(offset)))
+        .scalars()
+        .all()
     )
     return rows, total
 

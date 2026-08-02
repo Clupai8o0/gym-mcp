@@ -1,10 +1,12 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import type { Metadata } from "next";
 
-import { ExerciseGrid, FilterBar } from "@/components/library";
+import { FilterBar, InfiniteExerciseGrid } from "@/components/library";
 import { Button, EmptyState } from "@/components/ui";
 import { listExercises, type ExerciseFilters } from "@/lib/api";
 import { FILTER_KEYS } from "@/lib/catalog";
+import { THEME_COOKIE, toThemePreference } from "@/lib/theme";
 import styles from "./page.module.css";
 
 export const metadata: Metadata = {
@@ -31,33 +33,21 @@ function readFilters(params: RawParams): ExerciseFilters {
   return filters;
 }
 
-/** Build a Library href preserving filters, at a given offset (for prev/next). */
-function pageHref(params: RawParams, offset: number): string {
-  const query = new URLSearchParams();
-  for (const key of FILTER_KEYS) {
-    const value = one(params[key]);
-    if (value) query.set(key, value);
-  }
-  if (offset > 0) query.set("offset", String(offset));
-  const qs = query.toString();
-  return qs ? `/library?${qs}` : "/library";
-}
-
 export default async function LibraryPage({ searchParams }: { searchParams: Promise<RawParams> }) {
   const params = await searchParams;
   const filters = readFilters(params);
-  const offset = Math.max(0, Number.parseInt(one(params.offset), 10) || 0);
 
-  const { items, total, limit } = await listExercises({
-    ...filters,
-    limit: PAGE_SIZE,
-    offset,
-  });
+  // One cookie read for the whole grid, handed down to every tile — the illustrations are two
+  // distinct assets chosen per surface (see `IllustrationView`), and the client-appended pages
+  // need the same answer the server used for the first one.
+  const [{ items, total }, cookieStore] = await Promise.all([
+    listExercises({ ...filters, limit: PAGE_SIZE }),
+    cookies(),
+  ]);
+  const preference = toThemePreference(cookieStore.get(THEME_COOKIE)?.value);
 
-  const from = total === 0 ? 0 : offset + 1;
-  const to = Math.min(offset + limit, total);
-  const hasPrev = offset > 0;
-  const hasNext = offset + limit < total;
+  // Stable identity for this filter set: changes exactly when the result set does.
+  const cacheKey = new URLSearchParams(filters as Record<string, string>).toString() || "all";
 
   return (
     <div className={styles.page}>
@@ -72,37 +62,14 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
       <FilterBar />
 
       {total > 0 ? (
-        <>
-          <p className={styles.count} aria-live="polite">
-            Showing <span className="tnum">{from}</span>–<span className="tnum">{to}</span> of{" "}
-            <span className="tnum">{total}</span>
-          </p>
-
-          <ExerciseGrid exercises={items} />
-
-          {(hasPrev || hasNext) && (
-            <nav className={styles.pagination} aria-label="Pagination">
-              {hasPrev ? (
-                <Link href={pageHref(params, Math.max(0, offset - limit))} scroll>
-                  <Button variant="outline">← Previous</Button>
-                </Link>
-              ) : (
-                <Button variant="outline" disabled>
-                  ← Previous
-                </Button>
-              )}
-              {hasNext ? (
-                <Link href={pageHref(params, offset + limit)} scroll>
-                  <Button variant="outline">Next →</Button>
-                </Link>
-              ) : (
-                <Button variant="outline" disabled>
-                  Next →
-                </Button>
-              )}
-            </nav>
-          )}
-        </>
+        <InfiniteExerciseGrid
+          initial={items}
+          initialTotal={total}
+          pageSize={PAGE_SIZE}
+          query={filters}
+          preference={preference}
+          cacheKey={cacheKey}
+        />
       ) : (
         <EmptyState
           title="No exercises match those filters"

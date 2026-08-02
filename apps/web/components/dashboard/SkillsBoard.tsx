@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { EmptyState } from "@/components/ui";
 import { Pressable } from "@/components/motion/Pressable";
@@ -22,6 +23,7 @@ function caption(skill: SkillOverview): string {
  * The editor targets a skill by slug (not a snapshot), so re-opening always shows current values.
  */
 export function SkillsBoard({ skills }: { skills: SkillOverview[] }) {
+  const router = useRouter();
   const [items, setItems] = useState(skills);
   const [editingSlug, setEditingSlug] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -43,6 +45,10 @@ export function SkillsBoard({ skills }: { skills: SkillOverview[] }) {
       ),
     );
     setOpen(false);
+    // Home's "Top skill" highlight is rendered from this same data on another route, and the
+    // client router holds that render for `staleTimes.dynamic` (next.config.ts). Invalidate so
+    // navigating home doesn't show the progress this save just replaced.
+    router.refresh();
   };
 
   if (items.length === 0) {

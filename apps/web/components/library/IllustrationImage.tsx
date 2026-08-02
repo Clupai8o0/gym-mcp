@@ -1,178 +1,31 @@
+/**
+ * Server-component entry point for the exercise illustration.
+ *
+ * Every exercise ships two assets, one per surface — bold off-white linework for dark, the same
+ * art inverted to near-black for light (docs/06) — and the choice is made from the theme cookie so
+ * the right one is in the HTML the browser first parses. That cookie read is *all* this file adds:
+ * the rendering lives in {@link IllustrationView}, which is synchronous and importable from client
+ * code too (the Library grid needs it there to render the pages it appends on scroll).
+ *
+ * The preference is read here rather than threaded through every caller — the callers that use
+ * this wrapper (the detail page, the dashboard's `PrList`) are server components on already-dynamic
+ * routes, so the cookie read costs nothing they weren't paying.
+ */
 import { cookies } from "next/headers";
-import Image, { getImageProps } from "next/image";
-import ReactDOM from "react-dom";
 
-import { SharedElement } from "@/components/motion/SharedElement";
-import { cn } from "@/lib/cn";
-import { THEME_COOKIE, toThemePreference, type ThemePreference } from "@/lib/theme";
+import { THEME_COOKIE, toThemePreference } from "@/lib/theme";
 import type { IllustrationStatus } from "@/lib/types";
-import styles from "./IllustrationImage.module.css";
+import { IllustrationView, type IllustrationViewProps } from "./IllustrationView";
 
-/** The light twin is selected by this query; the dark asset is everything else. */
-const LIGHT_MEDIA = "(prefers-color-scheme: light)";
-const DARK_MEDIA = "not all and (prefers-color-scheme: light)";
+export type IllustrationImageProps = Omit<IllustrationViewProps, "preference">;
 
-export interface IllustrationImageProps {
-  /** Bold off-white linework — the asset that belongs on a dark surface. */
-  url: string | null;
-  /**
-   * The same art with its linework inverted to near-black, for light surfaces (docs/06). The
-   * amber working-muscle accent is byte-identical in both, which is why this is a second asset
-   * and not a `filter: invert()` — inverting would drag the accent to blue. Omit it (or pass
-   * `null`) and the dark asset is used on both surfaces, as before.
-   */
-  urlLight?: string | null;
-  status: string;
-  name: string;
-  /** When set, the media morphs across the list→detail transition (docs/08 signature moment). */
-  shareName?: string;
-  /** Prioritize the LCP image on detail pages. */
-  priority?: boolean;
-  size?: "card" | "detail";
-  className?: string;
+/** {@link IllustrationView}, with the viewer's appearance preference resolved from the cookie. */
+export async function IllustrationImage(props: IllustrationImageProps) {
+  const preference = toThemePreference((await cookies()).get(THEME_COOKIE)?.value);
+  return <IllustrationView {...props} preference={preference} />;
 }
 
-/** Minimal line-art placeholder shown until an illustration is `ready` (docs/06/07). */
-function Placeholder({ status }: { status: string }) {
-  return (
-    <div
-      className={cn(styles.placeholder, status === "generating" && styles.generating)}
-      aria-hidden
-    >
-      <svg viewBox="0 0 48 48" fill="none" className={styles.glyph}>
-        <path
-          d="M6 24h6M36 24h6M12 18v12M36 18v12M18 21v6M30 21v6M18 24h12"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-        />
-      </svg>
-    </div>
-  );
-}
-
-interface ThemedProps {
-  dark: string;
-  light: string;
-  preference: ThemePreference;
-  alt: string;
-  sizes: string;
-  priority: boolean;
-}
-
-/**
- * Picks between the two assets.
- *
- * An **explicit** preference is already known to the server (it rides in on the theme cookie), so
- * the right asset goes straight into a plain `next/image` — one `src`, one request, and `priority`
- * keeps emitting its own preload exactly as before.
- *
- * **System** is the case the server can't resolve, so it doesn't try: a `<picture>` hands the
- * decision to the browser, which settles it from `prefers-color-scheme` while parsing — no JS, no
- * round-trip, no flash of the wrong linework, and it re-decides for free if the viewer flips their
- * system appearance mid-session. `getImageProps` is what keeps the `<source>` on the optimizer
- * (AVIF + the tuned `deviceSizes`) instead of dropping to the raw Blob original. The hand-rolled
- * preloads stand in for the one `next/image` no longer emits here; each is scoped to the same
- * media query as its source, so exactly one of the two is ever fetched.
- */
-function ThemedIllustration({ dark, light, preference, alt, sizes, priority }: ThemedProps) {
-  // `light === dark` is an exercise with no light twin yet — nothing to choose between.
-  if (preference !== "system" || light === dark) {
-    return (
-      <Image
-        src={preference === "light" ? light : dark}
-        alt={alt}
-        fill
-        sizes={sizes}
-        className={styles.image}
-        priority={priority}
-      />
-    );
-  }
-
-  const common = { alt, fill: true, sizes, priority };
-  const { props: darkProps } = getImageProps({ ...common, src: dark });
-  const { props: lightProps } = getImageProps({ ...common, src: light });
-
-  if (priority) {
-    // The same call `next/image` makes for a priority image, once per variant and scoped to the
-    // media query its `<source>` answers — so the head still carries an LCP preload, and still
-    // only one of the two is ever fetched. Imperative rather than a rendered `<link>` because
-    // this is the path React dedupes: six priority tiles share one pair of hoisted preloads.
-    ReactDOM.preload(darkProps.src, {
-      as: "image",
-      media: DARK_MEDIA,
-      imageSrcSet: darkProps.srcSet,
-      imageSizes: darkProps.sizes,
-      fetchPriority: "high",
-    });
-    ReactDOM.preload(lightProps.src, {
-      as: "image",
-      media: LIGHT_MEDIA,
-      imageSrcSet: lightProps.srcSet,
-      imageSizes: lightProps.sizes,
-      fetchPriority: "high",
-    });
-  }
-
-  return (
-    <picture className={styles.picture}>
-      <source media={LIGHT_MEDIA} srcSet={lightProps.srcSet} sizes={lightProps.sizes} />
-      {/* A bare <img>, but not an unoptimized one: these are next/image's own computed props
-          (getImageProps), and a <picture> has to wrap a real <img>, not the component. */}
-      <img {...darkProps} className={styles.image} alt={alt} />
-    </picture>
-  );
-}
-
-/**
- * The exercise illustration — the primary visual texture of the app (docs/08). Renders a sized
- * image (explicit ratio → no CLS) when `ready`, otherwise a tasteful placeholder. Wrapping in
- * {@link SharedElement} lets the same illustration morph from the grid into the detail page.
- *
- * Each exercise ships two assets, one per surface; {@link ThemedIllustration} chooses. The theme
- * preference is read here rather than threaded through every caller — all three of them
- * (`ExerciseCard`, the detail page, the dashboard's `PrList`) are server components on
- * already-dynamic routes, so the cookie read costs nothing they weren't paying.
- */
-export async function IllustrationImage({
-  url,
-  urlLight,
-  status,
-  name,
-  shareName,
-  priority = false,
-  size = "card",
-  className,
-}: IllustrationImageProps) {
-  const ready = status === "ready" && Boolean(url);
-  const preference = ready
-    ? toThemePreference((await cookies()).get(THEME_COOKIE)?.value)
-    : "system";
-
-  const media = (
-    <div className={cn(styles.frame, styles[size], className)}>
-      {ready ? (
-        <ThemedIllustration
-          dark={url as string}
-          light={urlLight ?? (url as string)}
-          preference={preference}
-          alt={`Line-art illustration of ${name}`}
-          sizes={
-            size === "detail" ? "(max-width: 768px) 100vw, 480px" : "(max-width: 768px) 50vw, 240px"
-          }
-          priority={priority}
-        />
-      ) : (
-        <Placeholder status={status} />
-      )}
-    </div>
-  );
-
-  if (shareName) {
-    return <SharedElement name={shareName}>{media}</SharedElement>;
-  }
-  return media;
-}
-
+// Deliberately not re-exporting `IllustrationView`: this module imports `next/headers`, so any
+// client component reaching for the view through here would drag server-only code into the
+// browser bundle. Client callers import `./IllustrationView` directly.
 export type { IllustrationStatus };

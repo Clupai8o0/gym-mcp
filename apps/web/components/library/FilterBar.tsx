@@ -45,7 +45,6 @@ export function FilterBar() {
       const params = new URLSearchParams(searchParams.toString());
       if (value) params.set(key, value);
       else params.delete(key);
-      params.delete("offset"); // any filter change returns to the first page
       router.replace(`${pathname}?${params.toString()}`, { scroll: false });
     },
     [pathname, router, searchParams],
