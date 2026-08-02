@@ -6,5 +6,12 @@
 export const API_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "http://localhost:8000";
 
+/**
+ * This app's own origin. Must match the API's `WEB_ORIGIN` exactly — the login endpoint checks
+ * `return_to` against it and silently falls back to the site root when it doesn't match.
+ */
+export const BASE_URL =
+  process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/$/, "") ?? "http://localhost:3000";
+
 /** Custom header that forces a CORS preflight — the CSRF signal for cookie-authed writes. */
 export const CLIENT_HEADER = "X-Tempo-Client";

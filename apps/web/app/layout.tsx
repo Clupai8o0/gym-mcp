@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, Geist_Mono } from "next/font/google";
 
 import { ServiceWorkerRegistrar } from "@/components/pwa/ServiceWorkerRegistrar";
+import { THEME_BOOTSTRAP } from "@/lib/theme";
 import "./globals.css";
 
 // Inter is the documented open substitute for x.ai's proprietary Universal Sans (DESIGN.md);
@@ -60,8 +61,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${inter.variable} ${geistMono.variable}`}>
+    // `suppressHydrationWarning` covers exactly one attribute: the `data-theme` the bootstrap
+    // below writes on <html> before React ever sees the document (lib/theme).
+    <html lang="en" className={`${inter.variable} ${geistMono.variable}`} suppressHydrationWarning>
       <body>
+        {/* First thing in the body, and blocking: the parser stops here, so a stored light/dark
+            preference is on <html> before the first paint rather than one frame after it. This
+            runs on the static routes too, which have no request context to read the cookie in. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
         {children}
         <ServiceWorkerRegistrar />
       </body>

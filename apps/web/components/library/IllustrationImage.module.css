@@ -16,6 +16,12 @@
   border: 1px solid var(--border);
 }
 
+/* The <picture> is a selection mechanism, not a box — keep it out of the layout entirely so the
+ * `fill` image still resolves against .frame. */
+.picture {
+  display: contents;
+}
+
 .image {
   object-fit: contain;
 }

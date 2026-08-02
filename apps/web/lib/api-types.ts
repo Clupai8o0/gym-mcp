@@ -693,6 +693,8 @@ export interface components {
             secondary_muscles: string[];
             /** Illustration Url */
             illustration_url: string | null;
+            /** Illustration Url Light */
+            illustration_url_light: string | null;
             /** Illustration Status */
             illustration_status: string;
             /**
@@ -756,6 +758,8 @@ export interface components {
             secondary_muscles: string[];
             /** Illustration Url */
             illustration_url: string | null;
+            /** Illustration Url Light */
+            illustration_url_light: string | null;
             /** Illustration Status */
             illustration_status: string;
             /**

@@ -1,0 +1,48 @@
+/* The segmented control from UnitToggle.module.css, with an icon in place of the unit abbr. */
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.group {
+  display: inline-flex;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  background-color: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  width: fit-content;
+}
+
+.option {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
+}
+
+.option:hover {
+  color: var(--text);
+}
+
+.active,
+.active:hover {
+  color: var(--accent-contrast);
+  background-color: var(--accent);
+}
+
+.icon {
+  width: 1.125rem;
+  height: 1.125rem;
+}

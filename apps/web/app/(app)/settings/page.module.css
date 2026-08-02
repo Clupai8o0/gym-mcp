@@ -32,6 +32,24 @@
   letter-spacing: var(--tracking-tight);
 }
 
+/* Two labelled controls inside one section (Preferences → Units, Appearance). */
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.fieldTitle {
+  font-size: var(--text-base);
+  letter-spacing: var(--tracking-tight);
+}
+
 .sectionLede {
   color: var(--text-muted);
   font-size: var(--text-sm);

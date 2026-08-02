@@ -1,12 +1,27 @@
-import Image from "next/image";
+import { cookies } from "next/headers";
+import Image, { getImageProps } from "next/image";
+import ReactDOM from "react-dom";
 
 import { SharedElement } from "@/components/motion/SharedElement";
 import { cn } from "@/lib/cn";
+import { THEME_COOKIE, toThemePreference, type ThemePreference } from "@/lib/theme";
 import type { IllustrationStatus } from "@/lib/types";
 import styles from "./IllustrationImage.module.css";
 
+/** The light twin is selected by this query; the dark asset is everything else. */
+const LIGHT_MEDIA = "(prefers-color-scheme: light)";
+const DARK_MEDIA = "not all and (prefers-color-scheme: light)";
+
 export interface IllustrationImageProps {
+  /** Bold off-white linework — the asset that belongs on a dark surface. */
   url: string | null;
+  /**
+   * The same art with its linework inverted to near-black, for light surfaces (docs/06). The
+   * amber working-muscle accent is byte-identical in both, which is why this is a second asset
+   * and not a `filter: invert()` — inverting would drag the accent to blue. Omit it (or pass
+   * `null`) and the dark asset is used on both surfaces, as before.
+   */
+  urlLight?: string | null;
   status: string;
   name: string;
   /** When set, the media morphs across the list→detail transition (docs/08 signature moment). */
@@ -36,13 +51,93 @@ function Placeholder({ status }: { status: string }) {
   );
 }
 
+interface ThemedProps {
+  dark: string;
+  light: string;
+  preference: ThemePreference;
+  alt: string;
+  sizes: string;
+  priority: boolean;
+}
+
+/**
+ * Picks between the two assets.
+ *
+ * An **explicit** preference is already known to the server (it rides in on the theme cookie), so
+ * the right asset goes straight into a plain `next/image` — one `src`, one request, and `priority`
+ * keeps emitting its own preload exactly as before.
+ *
+ * **System** is the case the server can't resolve, so it doesn't try: a `<picture>` hands the
+ * decision to the browser, which settles it from `prefers-color-scheme` while parsing — no JS, no
+ * round-trip, no flash of the wrong linework, and it re-decides for free if the viewer flips their
+ * system appearance mid-session. `getImageProps` is what keeps the `<source>` on the optimizer
+ * (AVIF + the tuned `deviceSizes`) instead of dropping to the raw Blob original. The hand-rolled
+ * preloads stand in for the one `next/image` no longer emits here; each is scoped to the same
+ * media query as its source, so exactly one of the two is ever fetched.
+ */
+function ThemedIllustration({ dark, light, preference, alt, sizes, priority }: ThemedProps) {
+  // `light === dark` is an exercise with no light twin yet — nothing to choose between.
+  if (preference !== "system" || light === dark) {
+    return (
+      <Image
+        src={preference === "light" ? light : dark}
+        alt={alt}
+        fill
+        sizes={sizes}
+        className={styles.image}
+        priority={priority}
+      />
+    );
+  }
+
+  const common = { alt, fill: true, sizes, priority };
+  const { props: darkProps } = getImageProps({ ...common, src: dark });
+  const { props: lightProps } = getImageProps({ ...common, src: light });
+
+  if (priority) {
+    // The same call `next/image` makes for a priority image, once per variant and scoped to the
+    // media query its `<source>` answers — so the head still carries an LCP preload, and still
+    // only one of the two is ever fetched. Imperative rather than a rendered `<link>` because
+    // this is the path React dedupes: six priority tiles share one pair of hoisted preloads.
+    ReactDOM.preload(darkProps.src, {
+      as: "image",
+      media: DARK_MEDIA,
+      imageSrcSet: darkProps.srcSet,
+      imageSizes: darkProps.sizes,
+      fetchPriority: "high",
+    });
+    ReactDOM.preload(lightProps.src, {
+      as: "image",
+      media: LIGHT_MEDIA,
+      imageSrcSet: lightProps.srcSet,
+      imageSizes: lightProps.sizes,
+      fetchPriority: "high",
+    });
+  }
+
+  return (
+    <picture className={styles.picture}>
+      <source media={LIGHT_MEDIA} srcSet={lightProps.srcSet} sizes={lightProps.sizes} />
+      {/* A bare <img>, but not an unoptimized one: these are next/image's own computed props
+          (getImageProps), and a <picture> has to wrap a real <img>, not the component. */}
+      <img {...darkProps} className={styles.image} alt={alt} />
+    </picture>
+  );
+}
+
 /**
  * The exercise illustration — the primary visual texture of the app (docs/08). Renders a sized
- * `next/image` (explicit ratio → no CLS) when `ready`, otherwise a tasteful placeholder. Wrapping
- * in {@link SharedElement} lets the same illustration morph from the grid into the detail page.
+ * image (explicit ratio → no CLS) when `ready`, otherwise a tasteful placeholder. Wrapping in
+ * {@link SharedElement} lets the same illustration morph from the grid into the detail page.
+ *
+ * Each exercise ships two assets, one per surface; {@link ThemedIllustration} chooses. The theme
+ * preference is read here rather than threaded through every caller — all three of them
+ * (`ExerciseCard`, the detail page, the dashboard's `PrList`) are server components on
+ * already-dynamic routes, so the cookie read costs nothing they weren't paying.
  */
-export function IllustrationImage({
+export async function IllustrationImage({
   url,
+  urlLight,
   status,
   name,
   shareName,
@@ -51,17 +146,21 @@ export function IllustrationImage({
   className,
 }: IllustrationImageProps) {
   const ready = status === "ready" && Boolean(url);
+  const preference = ready
+    ? toThemePreference((await cookies()).get(THEME_COOKIE)?.value)
+    : "system";
+
   const media = (
     <div className={cn(styles.frame, styles[size], className)}>
       {ready ? (
-        <Image
-          src={url as string}
+        <ThemedIllustration
+          dark={url as string}
+          light={urlLight ?? (url as string)}
+          preference={preference}
           alt={`Line-art illustration of ${name}`}
-          fill
           sizes={
             size === "detail" ? "(max-width: 768px) 100vw, 480px" : "(max-width: 768px) 50vw, 240px"
           }
-          className={styles.image}
           priority={priority}
         />
       ) : (

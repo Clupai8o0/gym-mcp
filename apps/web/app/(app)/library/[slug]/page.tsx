@@ -96,6 +96,7 @@ export default async function ExerciseDetailPage({
         <div className={styles.media}>
           <IllustrationImage
             url={exercise.illustration_url}
+            urlLight={exercise.illustration_url_light}
             status={exercise.illustration_status}
             name={exercise.name}
             shareName={`exercise-illustration-${exercise.slug}`}

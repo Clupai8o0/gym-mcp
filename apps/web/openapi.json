@@ -2184,6 +2184,17 @@
             ],
             "title": "Illustration Url"
           },
+          "illustration_url_light": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Illustration Url Light"
+          },
           "illustration_status": {
             "type": "string",
             "title": "Illustration Status"
@@ -2228,6 +2239,7 @@
           "primary_muscles",
           "secondary_muscles",
           "illustration_url",
+          "illustration_url_light",
           "illustration_status",
           "instructions",
           "source",
@@ -2363,6 +2375,17 @@
             ],
             "title": "Illustration Url"
           },
+          "illustration_url_light": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Illustration Url Light"
+          },
           "illustration_status": {
             "type": "string",
             "title": "Illustration Status"
@@ -2386,6 +2409,7 @@
           "primary_muscles",
           "secondary_muscles",
           "illustration_url",
+          "illustration_url_light",
           "illustration_status"
         ],
         "title": "ExerciseOut",

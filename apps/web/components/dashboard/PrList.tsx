@@ -63,6 +63,8 @@ export function PrList({ prs, unit }: { prs: Pr[]; unit: UnitPref }) {
     <Stagger className={styles.grid} step={26} max={10}>
       {groups.map((group) => (
         <Link key={group.exerciseId} href={`/library/${group.slug}`} className={styles.card}>
+          {/* No `urlLight`: `PrOut` doesn't carry `illustration_url_light` the way `ExerciseOut`
+              does, so these cards keep the dark linework on both surfaces until the API adds it. */}
           <IllustrationImage
             url={group.illustrationUrl}
             status={group.illustrationStatus}

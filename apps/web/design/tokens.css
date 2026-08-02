@@ -4,47 +4,67 @@
  * px, or ms value. Derived from the getdesign `x.ai` system (apps/web/DESIGN.md) and reconciled
  * with docs/08 (which mandates a theme-aware light variant — see Decision Log D24).
  *
- * Dark is the signature and the default (`:root`). A light variant follows the viewer's system
- * preference. `--font-sans` / `--font-mono` are injected by `next/font` in the root layout.
+ * Dark is the signature and the default. A light variant follows the viewer's system preference
+ * unless the theme toggle overrides it. `--font-sans` / `--font-mono` are injected by `next/font`
+ * in the root layout.
  */
 
 :root {
-  /* ── Color — dark (signature) ─────────────────────────────────────────────── */
-  --bg: #0a0a0a; /* canvas */
-  --surface: #191919; /* card fill */
-  --surface-2: #1a1c20; /* hovered/nested surface */
-  --surface-3: #363a3f; /* deepest nested surface */
-  --border: #212327; /* hairline */
-  --border-strong: #363a3f;
+  /*
+   * ── Color ────────────────────────────────────────────────────────────────────
+   * Every themed token is authored **once**, as `light-dark(<light>, <dark>)`. Each one resolves
+   * against the root's *used* `color-scheme`, so all three cases fall out of a single pass with
+   * no palette restated anywhere:
+   *
+   *   no [data-theme]      → `color-scheme: light dark` → follows the OS (unchanged behaviour)
+   *   [data-theme="light"] → `color-scheme: light`      → forced light, whatever the OS says
+   *   [data-theme="dark"]  → `color-scheme: dark`       → forced dark, whatever the OS says
+   *
+   * `color-scheme` is the entire switch (see the override hooks at the foot of this file), which
+   * is also what keeps native form controls and scrollbars correct in all three cases.
+   */
+  color-scheme: light dark;
 
-  --text: #ffffff; /* ink */
-  --text-secondary: #dadbdf; /* body */
-  /* Meta/captions. Nudged up from the x.ai spec's #7d8187 to clear WCAG AA (4.5:1) on the
-   * elevated --surface/--surface-2 fills, not just the page canvas (docs/08 a11y gate). */
-  --text-muted: #868a90;
+  --bg: light-dark(#ffffff, #0a0a0a); /* canvas */
+  --surface: light-dark(#ffffff, #191919); /* card fill */
+  --surface-2: light-dark(#f6f6f7, #1a1c20); /* hovered/nested surface */
+  --surface-3: light-dark(#ececed, #363a3f); /* deepest nested surface */
+  --border: light-dark(#e4e4e7, #212327); /* hairline */
+  --border-strong: light-dark(#d4d4d8, #363a3f);
 
-  --accent: #ff7a17; /* sunset — the single restrained accent */
-  --accent-hover: #ff8f3d;
-  --accent-contrast: #0a0a0a; /* text/icon on an accent fill */
-  --accent-muted: rgba(255, 122, 23, 0.13); /* tinted accent backgrounds */
+  --text: light-dark(#0a0a0a, #ffffff); /* ink */
+  --text-secondary: light-dark(#3f3f46, #dadbdf); /* body */
+  /* Meta/captions. Both sides nudged off the x.ai spec (dark was #7d8187) to clear WCAG AA
+   * (4.5:1) on the elevated --surface/--surface-2 fills, not just the page canvas (docs/08). */
+  --text-muted: light-dark(#6b6b73, #868a90);
 
-  --success: #3ec78a; /* PR / positive */
-  --success-muted: rgba(62, 199, 138, 0.13);
-  --danger: #f2555a;
-  --danger-muted: rgba(242, 85, 90, 0.13);
+  /* Sunset — the single restrained accent. The light side is darkened from the dark theme's
+   * #ff7a17, but only to 3.83:1 on white: it clears the 3:1 non-text gate (WCAG 1.4.11) and not
+   * the 4.5:1 body-text one, so on light surfaces it belongs on fills, borders and large type
+   * rather than small labels. The dark side is 7.59:1 on --bg and unaffected. Values are
+   * unchanged from before the toggle existed; see the note in docs/08 §a11y before darkening. */
+  --accent: light-dark(#d95c0a, #ff7a17);
+  --accent-hover: light-dark(#c2510a, #ff8f3d);
+  --accent-contrast: light-dark(#ffffff, #0a0a0a); /* text/icon on an accent fill */
+  --accent-muted: light-dark(rgba(217, 92, 10, 0.1), rgba(255, 122, 23, 0.13)); /* tinted fills */
 
-  /* Translucent-white outline for pills (the x.ai signature interactive border). */
-  --outline: rgba(255, 255, 255, 0.14);
-  --outline-hover: rgba(255, 255, 255, 0.24);
-  --focus-ring: rgba(255, 122, 23, 0.55);
+  --success: light-dark(#16915d, #3ec78a); /* PR / positive */
+  --success-muted: light-dark(rgba(22, 145, 93, 0.1), rgba(62, 199, 138, 0.13));
+  --danger: light-dark(#d33b40, #f2555a);
+  --danger-muted: light-dark(rgba(211, 59, 64, 0.1), rgba(242, 85, 90, 0.13));
+
+  /* Translucent ink-on-surface outline for pills (the x.ai signature interactive border). */
+  --outline: light-dark(rgba(10, 10, 10, 0.14), rgba(255, 255, 255, 0.14));
+  --outline-hover: light-dark(rgba(10, 10, 10, 0.28), rgba(255, 255, 255, 0.24));
+  --focus-ring: light-dark(rgba(217, 92, 10, 0.5), rgba(255, 122, 23, 0.55));
 
   /* Resting border for functional form controls (input/select/number pad). Stronger than the
    * decorative --border hairline so the field boundary clears WCAG 1.4.11 (3:1) on --surface-2. */
-  --input-border: #676b71;
+  --input-border: light-dark(#8b8d93, #676b71);
 
   /* Overlay + the one legitimate elevation (dialogs/sheets over content). */
-  --overlay: rgba(0, 0, 0, 0.62);
-  --shadow-overlay: 0 16px 48px rgba(0, 0, 0, 0.55);
+  --overlay: light-dark(rgba(10, 10, 10, 0.4), rgba(0, 0, 0, 0.62));
+  --shadow-overlay: 0 16px 48px light-dark(rgba(10, 10, 10, 0.16), rgba(0, 0, 0, 0.55));
 
   /* ── Space — 4px base scale ───────────────────────────────────────────────── */
   --space-0: 0;
@@ -122,46 +142,20 @@
   --rail-width: 13rem;
   /* Icon-only rail — one 40px target plus its gutters (Phase 11F). */
   --rail-width-collapsed: 4.5rem;
-  color-scheme: dark;
 }
 
-/* Light variant — follows the system unless a future toggle stamps [data-theme]. */
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-    --bg: #ffffff;
-    --surface: #ffffff;
-    --surface-2: #f6f6f7;
-    --surface-3: #ececed;
-    --border: #e4e4e7;
-    --border-strong: #d4d4d8;
-
-    --text: #0a0a0a;
-    --text-secondary: #3f3f46;
-    --text-muted: #6b6b73; /* clears AA on the light --surface/--surface-2 fills */
-
-    --accent: #d95c0a;
-    --accent-hover: #c2510a;
-    --accent-contrast: #ffffff;
-    --accent-muted: rgba(217, 92, 10, 0.1);
-
-    --success: #16915d;
-    --success-muted: rgba(22, 145, 93, 0.1);
-    --danger: #d33b40;
-    --danger-muted: rgba(211, 59, 64, 0.1);
-
-    --outline: rgba(10, 10, 10, 0.14);
-    --outline-hover: rgba(10, 10, 10, 0.28);
-    --focus-ring: rgba(217, 92, 10, 0.5);
-
-    --input-border: #8b8d93; /* ≥3:1 on the light --surface-2 fill */
-
-    --overlay: rgba(10, 10, 10, 0.4);
-    --shadow-overlay: 0 16px 48px rgba(10, 10, 10, 0.16);
-    color-scheme: light;
-  }
+/*
+ * ── Manual override hooks ──────────────────────────────────────────────────────
+ * Settings → Appearance stamps `[data-theme]` on <html> (`lib/theme.ts`, restored before first
+ * paint by the bootstrap script in the root layout). Re-pointing `color-scheme` is the *whole*
+ * mechanism — every `light-dark()` token above re-resolves off it, so nothing here restates a
+ * value and a mid-session flip needs no re-render. Absent the attribute, the `light dark` default
+ * on :root leaves the OS in charge.
+ */
+:root[data-theme="light"] {
+  color-scheme: light;
 }
 
-/* Manual override hooks (used if a theme toggle is added later; harmless until then). */
 :root[data-theme="dark"] {
   color-scheme: dark;
 }

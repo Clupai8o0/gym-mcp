@@ -13,7 +13,13 @@ import styles from "./ExerciseCard.module.css";
  * (docs/08). Server-rendered; `Pressable` adds the press-scale. `priority` eager-loads the
  * above-the-fold LCP tiles.
  */
-export function ExerciseCard({ exercise, priority = false }: { exercise: Exercise; priority?: boolean }) {
+export function ExerciseCard({
+  exercise,
+  priority = false,
+}: {
+  exercise: Exercise;
+  priority?: boolean;
+}) {
   const primaryMuscle = exercise.primary_muscles[0];
   return (
     <Link href={`/library/${exercise.slug}`} className={styles.link} prefetch={false}>
@@ -21,6 +27,7 @@ export function ExerciseCard({ exercise, priority = false }: { exercise: Exercis
         <article className={styles.card}>
           <IllustrationImage
             url={exercise.illustration_url}
+            urlLight={exercise.illustration_url_light}
             status={exercise.illustration_status}
             name={exercise.name}
             shareName={`exercise-illustration-${exercise.slug}`}
