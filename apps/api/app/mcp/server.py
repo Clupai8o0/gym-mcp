@@ -38,7 +38,12 @@ from app.schemas.skills import (
 )
 from app.services import analytics, exercises, prs, sessions, sets, skills
 
-__all__ = ["mcp", "ensure_session_manager", "reset_session_manager"]
+__all__ = [
+    "mcp",
+    "ensure_session_manager",
+    "reset_session_manager",
+    "session_manager_started",
+]
 
 _INSTRUCTIONS = (
     "Tempo is a personal workout app (exercise library, logging, progress). These tools read "
@@ -243,12 +248,21 @@ async def update_session(
 
 @mcp.tool()
 async def get_active_session() -> dict[str, Any]:
-    """The workout currently in progress, or ``{"session": null}`` if the user isn't training."""
+    """The workout currently in progress, or ``{"session": null}`` if the user isn't training.
+
+    ``set_count`` is how many sets have been logged into it so far — enough to answer "how is
+    the workout going?" without fetching the whole session.
+    """
     async with runtime.open_session() as db:
-        row = await sessions.get_active_session(db, user_id=runtime.current_user_id())
-        return ActiveSessionOut(session=SessionOut.model_validate(row) if row else None).model_dump(
-            mode="json"
+        active = await sessions.get_active_session(db, user_id=runtime.current_user_id())
+        out = (
+            ActiveSessionOut(session=None, set_count=0)
+            if active is None
+            else ActiveSessionOut(
+                session=SessionOut.model_validate(active.session), set_count=active.set_count
+            )
         )
+        return out.model_dump(mode="json")
 
 
 @mcp.tool()
@@ -475,6 +489,15 @@ def ensure_session_manager() -> StreamableHTTPSessionManager:
     if mcp._session_manager is None:  # noqa: SLF001 — the only supported way to force creation
         mcp.streamable_http_app()
     return mcp.session_manager
+
+
+def session_manager_started() -> bool:
+    """Whether the Streamable-HTTP session manager has been built yet.
+
+    Lets a caller ask "has the MCP runtime been booted?" without importing anything further —
+    the lazy transport in :mod:`app.mcp.asgi` is only meaningful if that stays observable.
+    """
+    return mcp._session_manager is not None  # noqa: SLF001 — no public accessor exists
 
 
 def reset_session_manager() -> None:

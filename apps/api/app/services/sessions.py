@@ -62,6 +62,20 @@ class SessionDetail:
     exercises: dict[uuid.UUID, Exercise]
 
 
+@dataclass(frozen=True)
+class ActiveSession:
+    """The in-progress session and how many sets are in it so far.
+
+    The count travels with the session because every caller that asks "am I training?" also
+    wants to say *how far in* — the docked session bar and the home workout card both do. It
+    is free here: :func:`_activity` already scans this session's sets to decide whether the
+    session is stale, so it counts them in the same statement.
+    """
+
+    session: WorkoutSession
+    set_count: int
+
+
 async def _owned(db: AsyncSession, user_id: uuid.UUID, session_id: uuid.UUID) -> WorkoutSession:
     session = (
         await db.execute(
@@ -238,16 +252,23 @@ def _duration_minutes(performed_at: datetime, ended_at: datetime) -> int:
     return min(minutes, int(MAX_DERIVED_DURATION.total_seconds() // 60))
 
 
-async def _last_activity(db: AsyncSession, session: WorkoutSession) -> datetime:
-    """When the session was last touched: its newest set, or its start if it has none."""
-    newest = (
+async def _activity(db: AsyncSession, session: WorkoutSession) -> tuple[datetime, int]:
+    """When the session was last touched, and how many sets it holds.
+
+    Both answers come from one aggregate over the same rows: the staleness sweep needs the
+    newest ``created_at``, and every caller of :func:`get_active` needs the count, so asking
+    for them separately would be two round trips for one scan.
+    """
+    newest, count = (
         await db.execute(
-            select(func.max(ExerciseSet.created_at)).where(ExerciseSet.session_id == session.id)
+            select(func.max(ExerciseSet.created_at), func.count()).where(
+                ExerciseSet.session_id == session.id
+            )
         )
-    ).scalar_one_or_none()
+    ).one()
     if newest is None:
-        return session.performed_at
-    return max(newest, session.performed_at)
+        return session.performed_at, count
+    return max(newest, session.performed_at), count
 
 
 async def _stamp_finished(
@@ -288,8 +309,8 @@ async def finish_session(
 
 async def get_active_session(
     db: AsyncSession, *, user_id: uuid.UUID, now: datetime | None = None
-) -> WorkoutSession | None:
-    """The user's in-progress session, or ``None``.
+) -> ActiveSession | None:
+    """The user's in-progress session **and its set count**, or ``None``.
 
     "In progress" is ``ended_at IS NULL`` — no timezone, no date comparison. Sessions left
     open are retired here rather than by a background job (there is none on Fluid Compute):
@@ -311,9 +332,9 @@ async def get_active_session(
         .all()
     )
 
-    active: WorkoutSession | None = None
+    active: ActiveSession | None = None
     for session in open_sessions:
-        touched = await _last_activity(db, session)
+        touched, set_count = await _activity(db, session)
         # Two ways an open session is not the one you are training right now: nothing has
         # touched it in half a day, or it *started* longer ago than a workout can last. The
         # second covers rows created before `create` learned to close backdated sessions —
@@ -322,5 +343,5 @@ async def get_active_session(
         if at - touched > STALE_AFTER or at - session.performed_at > STALE_AFTER:
             await _stamp_finished(db, session, touched)
         elif active is None:
-            active = session
+            active = ActiveSession(session=session, set_count=set_count)
     return active

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
-import { RangeControl, VolumeChart } from "@/components/dashboard";
+import { RangeControl } from "@/components/dashboard/RangeControl";
+import { VolumeChart } from "@/components/dashboard/VolumeChart";
 import { getVolume } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
 import { DEFAULT_RANGE_KEY, rangeWindow, resolveRange } from "@/lib/ranges";

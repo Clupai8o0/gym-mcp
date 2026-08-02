@@ -1006,10 +1006,10 @@ Not required for Phase 0. Track here so they don't become surprise blockers:
   Confirmed first-hand: `x-vercel-id: syd1::iad1::` on both projects; one `SELECT 1` costs
   ~1.0–1.25s (six Pacific crossings, five of them transaction framing); one home render issues
   **ten** API calls, three of them serialised in the `(app)` layout.
-- **The fix, unstarted:** pin both projects to `syd1` — ~3.3s off the front door, against ~400ms
-  for every other item on the list combined. See `13` for the ranked plan, the rejected proposals
-  (`cssChunking` is a literal no-op under Turbopack; the naive `/api/home` aggregate is likely
-  *slower*), and the open questions.
+- **The fix:** pin both projects to `syd1` — ~3.3s off the front door, against ~400ms for every
+  other item on the list combined. **Executed the same day**, along with the rest of the plan —
+  see Phase 11K below and the rewritten `13`, which now records measured before/after for
+  everything that shipped and *why* two of its own proposals were rejected after being built.
 
 ## Phase 11I — Fix: the PR verdict ignored hand-entered records — DONE (reproduced, fixed, re-verified)
 - **Branch/PR:** `phase-11e-desktop-home`
@@ -1090,3 +1090,93 @@ Not required for Phase 0. Track here so they don't become surprise blockers:
 - **Notes:** no schema change. The MCP contract fixture now seeds a session 30 minutes old rather
   than a fixed calendar date — under the new rule a month-old session is correctly *not* active,
   so the old fixture was asserting the bug.
+
+## Phase 11K — Performance: execute the `13` plan — DONE (measured before and after)
+- **Branch/PR:** `phase-11e-desktop-home`
+- **Scope:** everything ranked in `docs/13-performance.md`, executed and re-measured. `13` was
+  rewritten from a plan into a record: every number in it is now measured, and the two items that
+  were **built and then reverted** are documented as rejected with the measurement that killed them.
+
+- **QW1 — both Vercel projects pinned to `syd1`** (functions were in `iad1`, Neon is in
+  `ap-southeast-2`). The single change worth more than everything else combined:
+  `/api/health` **1,412 → 101 ms**, one `SELECT 1` **1,105 → 19 ms**, per-DB-RTT **185 → 3.2 ms**,
+  `/dashboard` TTFB **1,150 → 222 ms**, `/library` **5,442 → 123 ms**. Both projects now report
+  `x-vercel-id: syd1::syd1::`. ⚠️ The setting lives only in the Vercel dashboard — committing
+  `regions` to the two `vercel.json` files is listed as remaining work in `13`.
+
+- **QW2 + S3 — the `@/components/log` and `@/components/dashboard` barrels are deleted.** Each
+  bundled one heavy component with light ones, so a barrel import dragged the `motion` runtime
+  onto `/dashboard` and the `next/image` cluster onto the chart routes. An ESLint
+  `no-restricted-imports` rule on the two group names stops them coming back. Measured per-route
+  client JS: `/dashboard` **88.5 → 38.0 KB gz**, `/log` **79.4 → 32.1**, `/progress/volume` and
+  `/progress/frequency` **40.0 → 29.6**, `/progress/records` **40.0 → 34.4** — **≈124 KB gz**
+  removed, more than double the audit's estimate.
+
+- **QW3 — the layout's reads go out together without breaking auth.** `Promise.all([requireUser(),
+  …reads])` is an auth bug, not parallelism: on an expired cookie `requireUser` throws
+  `NEXT_REDIRECT` while every read throws `ApiError(401)`, and `Promise.all` adopts whichever
+  rejects first — so roughly half of expired sessions would land on `error.tsx` instead of Google
+  login. New `lib/auth.parked()` starts a read, parks its rejection, and hands the *original*
+  promise back, so awaiting it after `requireUser()` still surfaces a genuine 500. Applied in the
+  `(app)` layout and `dashboard/page.tsx` (which had the same latent race).
+
+- **QW4 — `set_count` on `ActiveSessionOut`,** computed in `services/sessions.get_active_session`
+  so REST and MCP stay in lockstep. It deletes a whole serial hop in the layout *and* another in
+  the page: `getSession(active.id)` existed to compute one integer and dragged every set plus full
+  exercise rows across the wire. Free to produce — `_activity()` already scanned those sets for the
+  staleness sweep, so it now returns `(last_touched, count)` from one aggregate. Deliberately
+  **not** on `SessionOut`, which is validated off raw ORM rows at eight call sites.
+
+- **S1 — the MCP surface is off the REST cold path.** `import app.main` **366 → 240 ms** (median of
+  5, same venv, neutral cwd), and `mcp`/`jsonschema`/`sse_starlette`/`uvicorn`/`httpx`/`authlib` are
+  all absent from a REST import. The SDK's session manager is an `anyio` task group, which must be
+  entered and exited by the same task, so it could not simply be opened by the first request:
+  `asgi._LazyTransport` has the lifespan spawn a worker that parks on an event, and the first
+  **authorized** `/mcp` request wakes it. An unauthenticated probe never imports anything.
+
+- **S5 — `analytics.volume` aggregates in SQL** (was one row per *set*, folded in Python). Three
+  details carried the semantics: `coalesce` per `sum`, `bool_or(weight_kg IS NULL)` so a partial
+  tonnage is never reported as a total, and the sort **stays in Python** — DB collation would
+  silently reorder MCP output.
+
+- **S6 — the two desktop-only panels are Suspense-deferred** (`.panel` is `display:none` below
+  768px). `listPrs` stays blocking: it feeds "Latest PR" above the fold and has no React `cache()`.
+  The lifetime "has this account logged anything?" call is now only made when the answer is in doubt.
+
+- **The `??` → `||` footgun** in `lib/api.ts` + `lib/env.ts`: an env var set to the empty string was
+  honoured rather than falling back, which would have redirected every signed-in page to login
+  forever. (The audit's `.env.production` claim was checked — no such file exists in the repo.)
+
+- **Rejected after being built and measured — both were the audit's own proposals:**
+  - **S4 `LazyMotion`** made `/log/[sessionId]` *bigger*: **79.6 → 86.0 KB gz**. The split
+    machinery ships on top of a feature set already ≈ what `motion.*` pulled for these
+    opacity/transform animations, so nothing is dropped.
+  - **S2 root `app/loading.tsx`** works, but flushing bytes before the `(app)` layout resolves
+    means `redirect()` can no longer be an HTTP redirect: signed-out `/dashboard` went from
+    **307 + `Location`** to **200 with a JS-dependent in-band redirect**. Sound at a 3.6 s TTFB;
+    not at 222 ms.
+
+- **DoD evidence:**
+  - **264 passed** (was 261 → **+3**), the 3 failures still the pre-existing image/chroma ones.
+    `ruff`, `black --check`, `mypy --strict` (134 files) clean; architecture guard + MCP↔REST
+    contract suites unaffected. Web `next build`, `eslint .`, `tsc --noEmit` clean.
+  - **Live local stack** (Postgres 16, 873-exercise catalog, real signed session cookie, warm
+    processes): one `/dashboard` render went **10 API calls / 273.7 ms → 8 calls / 91.5 ms**
+    (6 blocking + 2 deferred), TTFB **44.5 → 15.5 ms**. Session bar rendered
+    *"Resume Push day — 3 sets logged"* from `set_count` with no detail fetch; both deferred panels
+    streamed real content (10 volume bars, 26 week cells); the new-account empty state still
+    resolves. Signed-out and garbage-cookie requests to `/dashboard`, `/log`, `/library`,
+    `/settings` all still **307 → Google**.
+  - `openapi.json` + `lib/api-types.ts` regenerated (additive: `set_count`, required).
+- **Notes:** no migration, no new dependency, no new env. `docs/13` carries the measurement
+  commands, including the two that are easy to get wrong (import timing resolves `app` from the
+  cwd; truncating a log uvicorn holds open silently loses the first requests).
+
+- **Also fixed here (pre-existing, unrelated to performance):** the API suite had been running
+  **3 failed / 261 passed** for some time. Both stubbed-provider tests handed the image pipeline
+  placeholder bytes (`b"PNGDATA"`, `b"\x89PNG-fake-bytes"`) which stopped decoding once
+  `generate_and_store` gained the chroma-key step, so three tests failed for a reason unrelated to
+  what they asserted. New `tests/_imagehelp.fake_generated_png()` returns a real magenta-ground PNG
+  — a stronger fixture, since a test that stubs the provider now exercises the keying it feeds.
+  Behind that failure sat a `style_version == "1"` assertion that had silently rotted through two
+  style bumps; it now asserts against `prompt.STYLE_VERSION`. **267 passed, 0 failed.**

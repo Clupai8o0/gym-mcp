@@ -143,7 +143,31 @@ async def test_active_session_is_the_newest_unfinished_one(db_session: AsyncSess
     )
 
     active = await sessions.get_active_session(db_session, user_id=user.id)
-    assert active is not None and active.id == newest.id
+    assert active is not None and active.session.id == newest.id
+
+
+async def test_active_session_carries_its_set_count(db_session: AsyncSession) -> None:
+    """The count travels with the session so a caller never fetches the whole detail to get it."""
+    user = await make_user(db_session)
+    exercise = await make_global_exercise(db_session)
+    session = await make_session(db_session, user_id=user.id, performed_at=datetime.now(tz=UTC))
+
+    empty = await sessions.get_active_session(db_session, user_id=user.id)
+    assert empty is not None and empty.set_count == 0
+
+    for number in (1, 2, 3):
+        await sets.log_set(
+            db_session,
+            user_id=user.id,
+            session_id=session.id,
+            exercise_id=exercise.id,
+            set_number=number,
+            weight_kg=60,
+            reps=5,
+        )
+
+    active = await sessions.get_active_session(db_session, user_id=user.id)
+    assert active is not None and active.set_count == 3
 
 
 async def test_active_session_is_none_once_finished(db_session: AsyncSession) -> None:
@@ -215,7 +239,7 @@ async def test_fresh_session_survives_the_staleness_sweep(db_session: AsyncSessi
     active = await sessions.get_active_session(
         db_session, user_id=user.id, now=started + timedelta(hours=11)
     )
-    assert active is not None and active.id == session.id
+    assert active is not None and active.session.id == session.id
 
 
 async def test_sweep_retires_older_dangling_sessions_but_keeps_the_live_one(
@@ -229,7 +253,7 @@ async def test_sweep_retires_older_dangling_sessions_but_keeps_the_live_one(
     live = await make_session(db_session, user_id=user.id, performed_at=now - timedelta(minutes=10))
 
     active = await sessions.get_active_session(db_session, user_id=user.id, now=now)
-    assert active is not None and active.id == live.id
+    assert active is not None and active.session.id == live.id
 
     await db_session.refresh(abandoned)
     assert abandoned.ended_at is not None  # swept, even though it wasn't the newest
@@ -277,7 +301,7 @@ class TestBackdatedSessionsAreBornFinished:
         )
         assert session.ended_at is None
         active = await sessions.get_active_session(db_session, user_id=user.id)
-        assert active is not None and active.id == session.id
+        assert active is not None and active.session.id == session.id
 
     async def test_an_old_open_session_is_never_active_even_if_recently_touched(
         self, db_session: AsyncSession

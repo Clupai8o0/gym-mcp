@@ -9,10 +9,11 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests._factories import make_global_exercise
+from tests._imagehelp import fake_generated_png
 
 
 async def _fake_generate(*, prompt, size, quality, model, background) -> bytes:  # type: ignore[no-untyped-def]
-    return b"PNGDATA"
+    return fake_generated_png()
 
 
 async def _fake_upload(*, key, data) -> str:  # type: ignore[no-untyped-def]

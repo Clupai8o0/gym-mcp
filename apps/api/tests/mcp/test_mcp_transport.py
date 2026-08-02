@@ -8,6 +8,12 @@ REST calls, reached through the MCP protocol.
 
 from __future__ import annotations
 
+import subprocess
+import sys
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from typing import Any
+
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -143,6 +149,96 @@ async def test_write_tool_requires_write_scope(
     )
     assert response.status_code == 200  # transport ok; the tool itself refuses
     assert "workouts.write" in tool_error_text(response)
+
+
+# ── The MCP surface stays off the REST cold path (docs/13 S1) ────────────────────────
+def test_importing_the_app_does_not_import_the_mcp_sdk() -> None:
+    """``import app.main`` must not pull in the MCP SDK — ~112 ms every REST cold start.
+
+    Checked in a **subprocess**: by the time this suite runs, half the tests have imported
+    ``app.mcp.server`` directly, so an in-process ``sys.modules`` check would be vacuous. The
+    same reasoning covers the transitive heavyweights the SDK and the auth/image adapters drag
+    in, each of which a REST request has no use for.
+    """
+    probe = (
+        "import app.main, sys; "
+        "leaked = [m for m in ('mcp', 'jsonschema', 'sse_starlette', 'uvicorn', 'httpx', "
+        "'authlib') if m in sys.modules]; "
+        "print(','.join(leaked))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe], capture_output=True, text=True, check=True
+    )
+    assert result.stdout.strip() == "", f"leaked onto the REST import path: {result.stdout}"
+
+
+async def test_the_runtime_boots_lazily_under_the_real_lifespan(db_session: AsyncSession) -> None:
+    """The one test that runs the production wiring: FastAPI's lifespan, not a hand-run manager.
+
+    Every other test here starts the session manager itself (``ASGITransport`` runs no
+    lifespan), so this is what actually exercises ``asgi._LazyTransport`` — that boot leaves
+    the MCP runtime unbuilt, an unauthenticated probe still doesn't build it, and the first
+    authorized request does, then serves normally.
+    """
+    from app.main import create_app
+    from app.mcp import runtime, server
+
+    user = await make_user(db_session)
+    _client, tokens = await mint_access_token(db_session, user_id=user.id)
+
+    @asynccontextmanager
+    async def _factory() -> AsyncIterator[Any]:
+        yield db_session  # the fixture owns the transaction — never commit/close here
+
+    runtime.set_session_factory(lambda: _factory())
+    server.reset_session_manager()  # run() is one-shot per instance
+    application = create_app()
+    try:
+        async with application.router.lifespan_context(application):
+            assert not server.session_manager_started(), "boot must not build the MCP runtime"
+
+            transport = ASGITransport(app=application)
+            async with AsyncClient(transport=transport, base_url="http://localhost") as client:
+                anonymous = await rpc(client, "tools/list")
+                assert anonymous.status_code == 401
+                assert not server.session_manager_started(), (
+                    "an unauthenticated probe — most of what a public endpoint gets — "
+                    "must be answered without booting the runtime"
+                )
+
+                authorized = await rpc(client, "tools/list", token=tokens.access_token)
+                assert authorized.status_code == 200
+                assert len(authorized.json()["result"]["tools"]) == 19
+                assert server.session_manager_started()
+
+                # Second call: the transport is already up, nothing restarts.
+                assert (await rpc(client, "tools/list", token=tokens.access_token)).status_code == (
+                    200
+                )
+    finally:
+        runtime.reset_session_factory()
+        server.reset_session_manager()
+
+
+async def test_the_lifespan_exits_cleanly_when_mcp_is_never_touched() -> None:
+    """A REST-only process must start and stop without ever booting MCP — or hanging.
+
+    The parked worker has to be released on shutdown even though nothing ever woke it: that is
+    the failure mode this design could plausibly have, and it would present as a deploy that
+    never finishes draining. The request is a DB-free one so this stays a test about the
+    lifespan and nothing else.
+    """
+    from app.main import create_app
+    from app.mcp import server
+
+    server.reset_session_manager()
+    application = create_app()
+    async with application.router.lifespan_context(application):
+        transport = ASGITransport(app=application)
+        async with AsyncClient(transport=transport, base_url="http://localhost") as client:
+            served = await client.get("/.well-known/oauth-authorization-server")
+            assert served.status_code == 200
+    assert not server.session_manager_started()
 
 
 async def test_disallowed_host_rejected(mcp_http: AsyncClient, db_session: AsyncSession) -> None:

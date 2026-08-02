@@ -125,6 +125,7 @@ async def test_get_active_session_matches_rest(
         mcp = await server.get_active_session()
     assert mcp == rest
     assert mcp["session"]["id"] == str(seeded["session_id"])
+    assert mcp["set_count"] == 2  # the fixture's two bench sets, counted without a detail fetch
 
 
 async def test_get_prs_matches_rest(

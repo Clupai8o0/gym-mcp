@@ -12,17 +12,14 @@ from __future__ import annotations
 import hmac
 import warnings
 from dataclasses import dataclass
+from functools import lru_cache
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlencode
 
-import httpx
-
-with warnings.catch_warnings():
-    # authlib.jose is supported until 2.0; docs/05 mandates authlib here. Quiet its
-    # migrate-to-joserfc notice at the single import site rather than globally.
-    warnings.simplefilter("ignore")
-    from authlib.jose import JsonWebToken
-
 from app.core.config import get_settings
+
+if TYPE_CHECKING:
+    from authlib.jose import JsonWebToken
 
 # Google's OIDC endpoints are stable and documented; hardcoded to avoid a discovery round
 # trip. JWKS is fetched per verification (low login volume) so key rotation is always honored.
@@ -33,7 +30,30 @@ _VALID_ISSUERS = ("https://accounts.google.com", "accounts.google.com")
 _CLOCK_SKEW_LEEWAY_SECONDS = 30
 _HTTP_TIMEOUT_SECONDS = 10.0
 
-_jwt = JsonWebToken(["RS256"])  # RS256 only — reject any other alg in the token header
+
+def _http() -> Any:
+    """``httpx`` — imported on use, not on import.
+
+    Nothing on the REST path talks HTTP outbound, but this module is reached from
+    ``app.main`` through the auth router, so a module-scope ``import httpx`` put ~21 ms of
+    cold start in front of *every* request to pay for the two calls below (docs/13 S1).
+    """
+    import httpx
+
+    return httpx
+
+
+@lru_cache(maxsize=1)
+def _jwt() -> JsonWebToken:
+    """RS256-only JWT decoder. Deferred for the same reason: ``authlib.jose`` costs ~32 ms
+    to import and is only ever needed inside the Google callback."""
+    with warnings.catch_warnings():
+        # authlib.jose is supported until 2.0; docs/05 mandates authlib here. Quiet its
+        # migrate-to-joserfc notice at the single import site rather than globally.
+        warnings.simplefilter("ignore")
+        from authlib.jose import JsonWebToken
+
+    return JsonWebToken(["RS256"])  # reject any other alg in the token header
 
 
 class GoogleAuthError(Exception):
@@ -79,7 +99,7 @@ async def exchange_code(*, code: str, code_verifier: str) -> str:
         "grant_type": "authorization_code",
         "code_verifier": code_verifier,
     }
-    async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT_SECONDS) as client:
+    async with _http().AsyncClient(timeout=_HTTP_TIMEOUT_SECONDS) as client:
         response = await client.post(_TOKEN_ENDPOINT, data=data)
     if response.status_code != 200:
         raise GoogleAuthError(f"Google token exchange failed ({response.status_code})")
@@ -94,7 +114,7 @@ async def verify_id_token(id_token: str, *, nonce: str) -> GoogleIdentity:
     settings = get_settings()
     jwks = await _fetch_jwks()
     try:
-        claims = _jwt.decode(
+        claims = _jwt().decode(
             id_token,
             jwks,
             claims_options={
@@ -124,7 +144,7 @@ async def verify_id_token(id_token: str, *, nonce: str) -> GoogleIdentity:
 
 
 async def _fetch_jwks() -> dict[str, object]:
-    async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT_SECONDS) as client:
+    async with _http().AsyncClient(timeout=_HTTP_TIMEOUT_SECONDS) as client:
         response = await client.get(_JWKS_URI)
     if response.status_code != 200:
         raise GoogleAuthError(f"could not fetch Google JWKS ({response.status_code})")

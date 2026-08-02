@@ -66,8 +66,12 @@ async def get_active_session(
     db: AsyncSession = Depends(get_db),
 ) -> ActiveSessionOut:
     """The in-progress session, or `null`. May finish sessions abandoned >12 h (see the service)."""
-    session = await sessions.get_active_session(db, user_id=cu.user_id)
-    return ActiveSessionOut(session=SessionOut.model_validate(session) if session else None)
+    active = await sessions.get_active_session(db, user_id=cu.user_id)
+    if active is None:
+        return ActiveSessionOut(session=None, set_count=0)
+    return ActiveSessionOut(
+        session=SessionOut.model_validate(active.session), set_count=active.set_count
+    )
 
 
 @router.get("/{session_id}", response_model=SessionDetailOut)

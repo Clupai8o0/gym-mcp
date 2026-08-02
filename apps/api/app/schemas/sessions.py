@@ -37,9 +37,19 @@ class ActiveSessionOut(BaseModel):
 
     Wrapped rather than returned bare so "no active session" is an ordinary 200 with a
     typed, nullable field — clients poll this on every screen and a 404 would be noise.
+
+    ``set_count`` lives here and **not** on :class:`SessionOut`, which is validated straight
+    off raw ORM rows at every other call site and would raise on a required field with no
+    matching attribute. It is here because it is what the callers of this endpoint actually
+    need next: both the docked session bar and the home workout card say "N sets" and would
+    otherwise fetch the entire session detail — every set plus full exercise rows — to count.
     """
 
     session: SessionOut | None
+    #: Sets logged into the active session so far; ``0`` when there is no active session.
+    #: Required, not defaulted — the response always carries it, and a client that has to
+    #: cope with it being absent would need a fallback that can never fire.
+    set_count: int
 
 
 class ExerciseSetGroup(BaseModel):

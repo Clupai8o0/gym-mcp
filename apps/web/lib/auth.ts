@@ -32,3 +32,28 @@ export async function requireUser(returnTo?: string): Promise<Me> {
   }
   return me;
 }
+
+/**
+ * Start a read now, but keep it from deciding how an unauthenticated request ends.
+ *
+ * `Promise.all([requireUser(), getActiveSession(), …])` looks like parallelisation and is
+ * really an auth bug. On an expired cookie the two settle differently — `requireUser` signals
+ * with `redirect()`, which *throws* `NEXT_REDIRECT`, while every read throws `ApiError(401)` —
+ * and `Promise.all` adopts whichever rejects **first**. Both are in flight at once, so roughly
+ * half of expired sessions would land on `error.tsx` instead of Google login.
+ *
+ * Wrapping a read in `parked()` attaches a no-op rejection handler, then hands the *original*
+ * promise back. The request is already on the wire (so nothing is serialised), the rejection
+ * can no longer surface as unhandled or beat the redirect, and awaiting it after
+ * `requireUser()` still throws — a genuine 500 is not swallowed, it just can't win the race.
+ *
+ * ```ts
+ * const active = parked(getActiveSession());
+ * const me = await requireUser("/dashboard");   // redirects first if the session is gone
+ * const { session } = await active;             // real failures still reach error.tsx
+ * ```
+ */
+export function parked<T>(read: Promise<T>): Promise<T> {
+  read.catch(() => {});
+  return read;
+}

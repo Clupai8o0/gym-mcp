@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { SessionStarter } from "@/components/log";
+import { SessionStarter } from "@/components/log/SessionStarter";
 import { Button, Card } from "@/components/ui";
 import styles from "./HomeWelcome.module.css";
 

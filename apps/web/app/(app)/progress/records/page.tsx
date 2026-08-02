@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
-import { PrList } from "@/components/dashboard";
+import { PrList } from "@/components/dashboard/PrList";
 import { Button, EmptyState } from "@/components/ui";
 import { listPrs } from "@/lib/api";
 import { requireUser } from "@/lib/auth";

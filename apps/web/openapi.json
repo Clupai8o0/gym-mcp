@@ -1772,14 +1772,19 @@
                 "type": "null"
               }
             ]
+          },
+          "set_count": {
+            "type": "integer",
+            "title": "Set Count"
           }
         },
         "type": "object",
         "required": [
-          "session"
+          "session",
+          "set_count"
         ],
         "title": "ActiveSessionOut",
-        "description": "The user's in-progress session, or ``null`` when they aren't training.\n\nWrapped rather than returned bare so \"no active session\" is an ordinary 200 with a\ntyped, nullable field — clients poll this on every screen and a 404 would be noise."
+        "description": "The user's in-progress session, or ``null`` when they aren't training.\n\nWrapped rather than returned bare so \"no active session\" is an ordinary 200 with a\ntyped, nullable field — clients poll this on every screen and a 404 would be noise.\n\n``set_count`` lives here and **not** on :class:`SessionOut`, which is validated straight\noff raw ORM rows at every other call site and would raise on a required field with no\nmatching attribute. It is here because it is what the callers of this endpoint actually\nneed next: both the docked session bar and the home workout card say \"N sets\" and would\notherwise fetch the entire session detail — every set plus full exercise rows — to count."
       },
       "AuthorizationServerMetadata": {
         "properties": {

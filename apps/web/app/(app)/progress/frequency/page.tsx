@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
-import { FrequencyHeatmap, RangeControl } from "@/components/dashboard";
+import { FrequencyHeatmap } from "@/components/dashboard/FrequencyHeatmap";
+import { RangeControl } from "@/components/dashboard/RangeControl";
 import { getFrequency } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
 import { DEFAULT_RANGE_KEY, resolveRange } from "@/lib/ranges";

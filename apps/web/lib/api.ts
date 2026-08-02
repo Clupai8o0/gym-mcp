@@ -20,7 +20,6 @@ import type {
   Frequency,
   Me,
   PrList,
-  Session,
   SessionDetail,
   SessionList,
   SkillsOverview,
@@ -34,7 +33,11 @@ export { API_URL };
  * (`API_INTERNAL_URL`) to skip a public round-trip; it falls back to the public API URL. Only
  * read server-side, so it may reference a non-public host safely.
  */
-const SERVER_API_URL = process.env.API_INTERNAL_URL?.replace(/\/$/, "") ?? API_URL;
+// `||` rather than `??` for the reason spelled out in `lib/env.ts`: an `API_INTERNAL_URL` set
+// to "" is a misconfiguration, and nullish-coalescing would honour it — every RSC fetch would
+// then resolve against a relative base, `getMe()` would fail, and the shell would redirect
+// every signed-in page to login forever.
+const SERVER_API_URL = process.env.API_INTERNAL_URL?.replace(/\/$/, "") || API_URL;
 
 export class ApiError extends Error {
   constructor(
@@ -172,15 +175,18 @@ export async function listSessions(
 }
 
 /**
- * The workout in progress, or `null` (Phase 11A). This is the *only* correct way to ask "is
- * the user training?" — a server component comparing `performed_at` to today would evaluate
- * in the server's timezone, not the lifter's. `cache`d so the shell and the page share one
+ * The workout in progress and how many sets are in it — `{session: null, set_count: 0}` when
+ * the user isn't training (Phase 11A). This is the *only* correct way to ask "is the user
+ * training?": a server component comparing `performed_at` to today would evaluate in the
+ * server's timezone, not the lifter's. `cache`d so the shell and the page share one
  * round-trip per request.
+ *
+ * The count comes back with the session so nothing has to fetch the full session detail —
+ * every set plus its exercise rows — to render "3 sets" in the docked bar.
  */
-export const getActiveSession = cache(async (): Promise<Session | null> => {
-  const { session } = await getJson<ActiveSession>("/api/sessions/active");
-  return session;
-});
+export const getActiveSession = cache(async (): Promise<ActiveSession> =>
+  getJson<ActiveSession>("/api/sessions/active"),
+);
 
 /**
  * One session with its sets grouped by exercise, or `null` if not found / not the user's.

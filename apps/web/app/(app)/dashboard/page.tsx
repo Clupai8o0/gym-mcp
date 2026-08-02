@@ -1,7 +1,11 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import type { Metadata } from "next";
 
-import { FrequencyHeatmap, PrList, RangeControl, VolumeChart } from "@/components/dashboard";
+import { FrequencyHeatmap } from "@/components/dashboard/FrequencyHeatmap";
+import { PrList } from "@/components/dashboard/PrList";
+import { RangeControl } from "@/components/dashboard/RangeControl";
+import { VolumeChart } from "@/components/dashboard/VolumeChart";
 import {
   DayStrip,
   HighlightRow,
@@ -10,19 +14,19 @@ import {
   WeekStats,
   WorkoutCard,
 } from "@/components/home";
-import { LocalTime } from "@/components/ui";
+import { LocalTime, Skeleton } from "@/components/ui";
 import {
   getActiveSession,
   getFrequency,
-  getSession,
   getSkillsOverview,
   getVolume,
   listExercises,
   listPrs,
   listSessions,
 } from "@/lib/api";
-import { requireUser } from "@/lib/auth";
+import { parked, requireUser } from "@/lib/auth";
 import { formatPrValue, prTypeLabel } from "@/lib/format";
+import type { DashboardRange } from "@/lib/ranges";
 import { DEFAULT_RANGE_KEY, rangeWindow, resolveRange } from "@/lib/ranges";
 import type { Pr, SkillOverview, UnitPref } from "@/lib/types";
 import styles from "./page.module.css";
@@ -60,6 +64,34 @@ function latestPr(prs: Pr[]): Pr | null {
 }
 
 /**
+ * The two panels below are `display: none` under 768px, so on the screen size that actually has
+ * a latency budget their data is never seen. Fetching them inside a `Suspense` boundary takes
+ * them off the blocking path entirely: the phone screen streams as soon as its own reads land,
+ * and desktop fills these in a beat later.
+ *
+ * `listPrs` deliberately stays blocking even though the Records panel is also desktop-only — it
+ * feeds "Latest PR" and the week's PR count above the fold, and it has no React `cache()`, so
+ * deferring it would issue a *second* request for data the page already needs.
+ */
+async function VolumePanelBody({ range, unit }: { range: DashboardRange; unit: UnitPref }) {
+  const { from, to } = rangeWindow(range);
+  const volume = await getVolume(from, to);
+  if (volume.items.length === 0) {
+    return <p className={styles.empty}>No sets logged in this range yet.</p>;
+  }
+  return <VolumeChart volume={volume} unit={unit} />;
+}
+
+async function FrequencyPanelBody({ weeks }: { weeks: number }) {
+  return <FrequencyHeatmap frequency={await getFrequency(weeks)} />;
+}
+
+/** Placeholder for a deferred panel — only ever visible ≥768px, where the panels exist. */
+function PanelFallback({ height }: { height: string }) {
+  return <Skeleton height={height} radius="var(--radius-md)" />;
+}
+
+/**
  * Home (Phase 11C). `/dashboard` stopped being "the charts page" and became the app's front door:
  * one phone screen, no scrolling, with the workout above the fold and everything else a one-line
  * summary that links to its own `/progress/*` screen.
@@ -70,36 +102,35 @@ function latestPr(prs: Pr[]): Pr | null {
 export default async function HomePage({ searchParams }: { searchParams: Promise<RawParams> }) {
   const params = await searchParams;
   const range = resolveRange(one(params.range) || DEFAULT_RANGE_KEY);
-  const { from: rangeFrom, to: rangeTo } = rangeWindow(range);
 
   const now = new Date();
   const nowIso = now.toISOString();
   const weekFrom = new Date(now.getTime() - WEEK_MS).toISOString();
   const stripFrom = new Date(now.getTime() - STRIP_MS).toISOString();
 
-  const [me, active, recent, lifetime, weekVolume, prs, skills, rangeVolume, frequency] =
-    await Promise.all([
-      requireUser("/dashboard"),
-      getActiveSession(),
-      // The nine-day window feeds both the strip and (filtered to seven) the session count.
-      listSessions({ from: stripFrom, limit: 100 }),
-      // `total` only — the cheapest way to ask "has this account ever logged anything?".
-      listSessions({ limit: 1 }),
-      getVolume(weekFrom, nowIso),
-      listPrs(),
-      getSkillsOverview(),
-      // Desktop's right column; cheap aggregates, and SSR can't branch on viewport width.
-      getVolume(rangeFrom, rangeTo),
-      getFrequency(range.weeks),
-    ]);
+  // Every read starts here, but the user resolves *first*: on an expired cookie these all throw
+  // 401 and only `requireUser` knows to redirect (see `lib/auth.parked`).
+  const reads = {
+    active: parked(getActiveSession()),
+    // The nine-day window feeds both the strip and (filtered to seven) the session count.
+    recent: parked(listSessions({ from: stripFrom, limit: 100 })),
+    weekVolume: parked(getVolume(weekFrom, nowIso)),
+    prs: parked(listPrs()),
+    skills: parked(getSkillsOverview()),
+  };
+  const me = await requireUser("/dashboard");
+  const [{ session: active, set_count: setCount }, recent, weekVolume, prs, skills] =
+    await Promise.all([reads.active, reads.recent, reads.weekVolume, reads.prs, reads.skills]);
 
   const unit = me.unit_pref as UnitPref;
-  const detail = active ? await getSession(active.id) : null;
-  const setCount = detail
-    ? detail.exercises.reduce((total, group) => total + group.sets.length, 0)
-    : 0;
 
-  const isNewAccount = lifetime.total === 0 && prs.items.length === 0;
+  // "Has this account ever logged anything?" — asked only when the answer is still in doubt.
+  // Any PR, or any session in the last nine days, settles it without a sixth round trip; only a
+  // genuinely bare-looking account pays for the lifetime count.
+  const isNewAccount =
+    prs.items.length === 0 &&
+    recent.items.length === 0 &&
+    (await listSessions({ limit: 1 })).total === 0;
   if (isNewAccount) {
     const catalog = await listExercises({ limit: 1 });
     return (
@@ -196,11 +227,9 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           <span className={styles.panelMeta}>Last {range.label}</span>
         </div>
         <div className={styles.panelBody}>
-          {rangeVolume.items.length > 0 ? (
-            <VolumeChart volume={rangeVolume} unit={unit} />
-          ) : (
-            <p className={styles.empty}>No sets logged in this range yet.</p>
-          )}
+          <Suspense fallback={<PanelFallback height="16rem" />}>
+            <VolumePanelBody range={range} unit={unit} />
+          </Suspense>
         </div>
       </section>
 
@@ -215,7 +244,9 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           <span className={styles.panelMeta}>Last {range.weeks} weeks</span>
         </div>
         <div className={styles.panelBody}>
-          <FrequencyHeatmap frequency={frequency} />
+          <Suspense fallback={<PanelFallback height="10rem" />}>
+            <FrequencyPanelBody weeks={range.weeks} />
+          </Suspense>
         </div>
       </section>
 

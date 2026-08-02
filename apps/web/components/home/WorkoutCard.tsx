@@ -1,6 +1,8 @@
 import Link from "next/link";
 
-import { SessionStarter } from "@/components/log";
+// Deep import, not the barrel: it also exports `SessionLogger`, which pulls the `motion`
+// runtime onto home — a screen with nothing to animate. Guarded by ESLint.
+import { SessionStarter } from "@/components/log/SessionStarter";
 import { Card, LocalTime } from "@/components/ui";
 import type { Session } from "@/lib/types";
 import styles from "./WorkoutCard.module.css";

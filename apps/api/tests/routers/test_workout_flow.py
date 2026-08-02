@@ -99,7 +99,8 @@ async def test_active_and_finish_endpoints(
     app_client: AsyncClient, db_session: AsyncSession
 ) -> None:
     """`GET /active` reflects the lifecycle, and `/finish` is idempotent over HTTP (Phase 11A)."""
-    assert (await app_client.get("/api/sessions/active")).json()["session"] is None
+    idle = (await app_client.get("/api/sessions/active")).json()
+    assert idle["session"] is None and idle["set_count"] == 0
 
     # Started *now* — a backfilled historical session (like `_PERFORMED_AT`) is deliberately
     # never "active": it is already older than the staleness window.
@@ -111,6 +112,8 @@ async def test_active_and_finish_endpoints(
     active = await app_client.get("/api/sessions/active")
     assert active.status_code == 200
     assert active.json()["session"]["id"] == session_id
+    # The count rides along, so the session bar never fetches the whole detail to say "N sets".
+    assert active.json()["set_count"] == 0
 
     finished = await app_client.post(f"/api/sessions/{session_id}/finish")
     assert finished.status_code == 200

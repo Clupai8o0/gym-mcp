@@ -1,247 +1,241 @@
-# 13 — Performance: why the app is slow, and the plan to fix it
+# 13 — Performance: what was slow, what was done, what is left
 
-Audited **2026-08-02** against production, by two independent passes: a 36-agent sweep whose
-findings were adversarially verified (17 of 28 survived), and a separate Codex CLI audit run
-read-only over the worktree. Where they disagreed, the disagreement is recorded below rather than
-smoothed over.
+Audited **2026-08-02** against production by two independent passes (a 36-agent sweep whose
+findings were adversarially verified — 17 of 28 survived — and a separate Codex CLI audit read
+over the worktree), then **executed the same day**. Where the audit and the measurement disagreed,
+the measurement won and the disagreement is recorded rather than smoothed over.
 
-Numbers marked **[measured]** were taken first-hand. Everything else is labelled an estimate.
+Every number below is **measured**, not estimated. Where something is still an estimate it says so.
 
 ---
 
 ## The diagnosis
 
-**The functions run in Virginia. The database is in Sydney.**
+**The functions ran in Virginia. The database is in Sydney.**
 
 ```
-x-vercel-id: syd1::iad1::…        ← both tempo-web and tempo-api          [measured]
-Neon host:   …ap-southeast-2.aws.neon.tech   (54 ms TCP from Sydney)      [measured]
+x-vercel-id: syd1::iad1::…        ← both tempo-web and tempo-api
+Neon host:   …ap-southeast-2.aws.neon.tech   (54 ms TCP from Sydney)
 ```
 
-A request from Australia enters the Sydney edge, is shipped to `iad1` to execute, and reaches back
-across the Pacific to a database that was 54 ms from the user all along.
+A request from Australia entered the Sydney edge, was shipped to `iad1` to execute, and reached
+back across the Pacific to a database that was 54 ms from the user all along.
 
-One query is not one crossing:
+One query was not one crossing:
 
 ```
-GET /.well-known/oauth-authorization-server   0.318 s   ← same function, no DB   [measured]
-GET /api/health          (one SELECT 1)       1.33 / 1.35 / 1.57 s               [measured]
+GET /.well-known/oauth-authorization-server   0.318 s   ← same function, no DB
+GET /api/health          (one SELECT 1)       1.33 / 1.35 / 1.57 s
                                               ───────
                         ≈ 1.0–1.25 s to run one SELECT 1
 ```
 
-Divided by the ~185 ms iad1↔ap-southeast-2 RTT, that is **six round trips**, which decomposes
+Divided by the ~185 ms `iad1`↔`ap-southeast-2` RTT, that is **six round trips**, which decomposes
 exactly: `pool_pre_ping` (BEGIN + `;` + ROLLBACK = 3) + transaction BEGIN + the query itself +
-`get_db`'s unconditional COMMIT. **Five of the six are framing. One is work.**
+`get_db`'s unconditional COMMIT. **Five of the six were framing. One was work.**
 
-Then multiply. A single authenticated home render issues **ten API calls** — captured from the
-API's own request log, on localhost with a warm process and a local DB, so this is the fan-out
-alone with all network cost removed:
-
-```
-GET /api/me                    22.87 ms     GET /api/sessions        28.04 ms
-GET /api/sessions/active       23.17 ms     GET /api/sessions        28.85 ms
-GET /api/analytics/frequency   16.50 ms     GET /api/skills          20.59 ms
-GET /api/analytics/volume      26.26 ms     GET /api/exercises        3.19 ms
-GET /api/prs                   19.86 ms
-GET /api/analytics/volume      19.29 ms   → 10 calls, 208.6 ms       [measured]
-```
+Then multiply: a single authenticated home render issued **ten** API calls, three of them
+serialised in the `(app)` layout. `GET /dashboard` — which does nothing but resolve the session
+and redirect — measured **1.15 s TTFB**.
 
 Counting statements rather than wall-clock, the Codex pass reached the same place from the other
-direction: **≈36 DB protocol exchanges** per dashboard render — 16 business SQL + 10 `pool_pre_ping`
-+ 10 `COMMIT`. Two methods, one conclusion.
-
-And they are not one wave. `app/(app)/layout.tsx` awaits `requireUser()` → `getActiveSession()` →
-`getSession()` **sequentially** before the page's `Promise.all` resolves. `GET /dashboard` — which
-does nothing but resolve the session and redirect — measures **1.15 s TTFB** [measured].
-
-### Cold home-page budget
-
-| Stage | Today | After region pin |
-|---|---:|---:|
-| DNS + TCP + TLS → syd1 edge | 80 ms | 80 ms |
-| syd1 edge → web function | 100 ms | ~5 ms |
-| Next.js cold start | 0–400 ms | 0–400 ms |
-| Layout hop 1 — `/api/me` | 1,150 ms | 75 ms |
-| Layout hop 2 — `/api/sessions/active` (serial, no data dependency) | 1,150 ms | 75 ms |
-| Layout hop 3 — `getSession()`, only mid-workout | +1,480 ms | +85 ms |
-| Page fan-out (7 parallel; cost = slowest) | 1,350 ms | 90 ms |
-| Python cold start, first call only | +800–1,500 ms *(est)* | same |
-| **TTFB** | **≈3,650 ms** | **≈340 ms** |
-| Fonts 71.5 KB + CSS 14.0 KB gz + entry JS ~90 KB gz | 200 ms / 1,500 ms slow-4G | same |
-| Hydration | 30 ms desktop / 130 ms mid-tier Android *(est)* | same |
-| **Interactive, warm, broadband** | **≈4.0 s** | **≈0.6 s** |
-
-The first request of a session measured **9.58 s** against 1.41 s warm [measured]. Python cold
-start alone cannot explain an 8.2 s gap; Neon compute resume is the likely remainder — see
-Open questions.
+direction: **≈36 DB protocol exchanges** per dashboard render (16 business SQL + 10 `pool_pre_ping`
++ 10 `COMMIT`). Two methods, one conclusion.
 
 ---
 
-## The plan
+## What shipped
 
-### Quick wins — do first
+### QW1 · Both Vercel projects pinned to `syd1` — **done**
 
-**QW1 · Pin both Vercel projects to `syd1`.** ~3.3 s off the front door. Effort **S**.
+The single change worth more than everything else combined. Toggled in Settings → Functions →
+Function Region on both projects, then redeployed.
 
-Two files, one key each:
+| | before | after | |
+|---|---:|---:|---|
+| `/api/health` (one `SELECT 1`) | 1,412 ms | **101 ms** | 14× |
+| cost of that `SELECT 1` alone | 1,105 ms | **19 ms** | 58× |
+| per DB round trip | 185 ms | **3.2 ms** | 58× |
+| `/dashboard` TTFB | 1,150 ms | **222 ms** | 5.2× |
+| `/library` TTFB | 5,442 ms | **123 ms** | 44× |
 
-```json
-{ "$schema": "https://openapi.vercel.sh/vercel.json", "regions": ["syd1"] }
-```
+`x-vercel-id` now reads `syd1::syd1::…` on both projects.
 
-in `apps/web/vercel.json` and `apps/api/vercel.json`. **Flip Settings → Functions → Function Region
-to Sydney in the dashboard first** — it captures the entire win, is one click, and is instantly
-reversible. Commit the files after it is proven.
+> ⚠️ **The region lives only in the Vercel dashboard.** Committing `{"regions": ["syd1"]}` to
+> `apps/web/vercel.json` and `apps/api/vercel.json` would put it in the repo, where a project
+> recreated from scratch inherits it. Do **not** reach for `vercel.ts` (which `09` prefers):
+> `@vercel/config` is not installed and is absent from `pnpm-lock.yaml`, so adding it puts a
+> lockfile change on the deploy path and Vercel installs frozen. Plain `vercel.json` is identical
+> in effect.
 
-> **Do not** reach for `vercel.ts` here, despite this repo's preference for it in `09`.
-> `@vercel/config` is not installed and is absent from `pnpm-lock.yaml` [verified]; adding it puts a
-> lockfile change on the deploy path, and Vercel installs frozen. Plain `vercel.json` is identical
-> in effect. Update `09` rather than take the risk.
+### QW2 + S3 · The component barrels are gone — **done**
 
-Acceptance: `x-vercel-id` reads `syd1::syd1::…` and `/api/health` median drops under 100 ms.
+`@/components/log` and `@/components/dashboard` each bundled one heavy component with several
+light ones, and a barrel import pulls the whole group into the route's client bundle:
+`SessionLogger` carries the `motion` runtime; `PrList` → `IllustrationImage` carries the
+`next/image` cluster. Both `index.ts` files were **deleted** — every call site now imports the
+component it uses — and an ESLint `no-restricted-imports` rule on the two group names stops
+someone re-adding them. Barrels elsewhere (`@/components/ui`, `@/components/home`) are fine:
+their members are uniformly light.
 
-**QW2 · Deep-import `@/components/log`.** ~48 KB gz off `/dashboard` and `/log`. Effort **S**.
+Per-route client JS, summed from the real Turbopack manifests (`next build` prints no size table):
 
-The `motion` chunk (126,552 raw / 41,641 gz) rides the barrel onto routes that never animate.
-Change `components/home/WorkoutCard.tsx`, `components/home/HomeWelcome.tsx` and
-`app/(app)/log/page.tsx` to import `@/components/log/SessionStarter` directly. Leave
-`log/[sessionId]/page.tsx` on the barrel — it genuinely renders `SessionLogger`. Add an
-ESLint `no-restricted-imports` guard on the exact group `@/components/log`.
+| route | before | after | |
+|---|---:|---:|---|
+| `/dashboard` | 88.5 KB gz | **38.0** | −50.5 (−57%) |
+| `/log` | 79.4 KB gz | **32.1** | −47.3 (−60%) |
+| `/progress/volume` | 40.0 KB gz | **29.6** | −10.4 (−26%) |
+| `/progress/frequency` | 40.0 KB gz | **29.6** | −10.4 (−26%) |
+| `/progress/records` | 40.0 KB gz | **34.4** | −5.6 (−14%) |
+| `/log/[sessionId]` | 79.4 KB gz | 79.6 | — (it genuinely uses all of it) |
+| `/library`, `/settings` | 41.1 / 34.4 | unchanged | — |
 
-Per-route JS today [measured]: `/dashboard` 223.5 KB gz / 194.2 br · `/log` 214.1 / 185.8 ·
-`/library` 174.7 / 151.2 · `/settings` 167.8 / 145.0.
+**≈124 KB gz** removed across the app — more than double the audit's ~56 KB estimate.
 
-**QW3 · Parallelise the two independent layout awaits.** One full serial hop. Effort **S**.
+### QW3 · The layout's awaits go out together, without breaking auth — **done**
 
-⚠️ **`Promise.all([requireUser(), getActiveSession()])` is an auth bug, not a fix.** `requireUser`
-signals with `redirect()` (throws `NEXT_REDIRECT`); `getActiveSession` throws `ApiError(401)`.
-`Promise.all` adopts whichever rejects first, so roughly half of expired sessions would land on
-`global-error.tsx` instead of Google login. Start both, then resolve auth first:
+`Promise.all([requireUser(), getActiveSession()])` looks like parallelisation and is really an
+auth bug. On an expired cookie the two settle differently — `requireUser` signals with
+`redirect()`, which *throws* `NEXT_REDIRECT`, while every read throws `ApiError(401)` — and
+`Promise.all` adopts whichever rejects **first**. Roughly half of expired sessions would have
+landed on `error.tsx` instead of Google login.
 
-```ts
-const mePromise = getMe();
-const activePromise = getActiveSession().catch(() => null);
-const me = await mePromise;
-if (!me) redirect(loginUrl());
-const active = await activePromise;
-```
+The fix is `lib/auth.parked()`: attach a no-op rejection handler to a read, hand the *original*
+promise back, resolve the user, then await it. The request is already on the wire, the rejection
+cannot beat the redirect, and awaiting it afterwards still throws — a genuine 500 is not
+swallowed, it just can't win the race.
 
-The same latent race already exists in `dashboard/page.tsx` and the `progress/*` pages; it is dead
-code only because the layout redirects first. Parallelising un-masks it — fix them together or keep
-`requireUser()` first in each page's `Promise.all`.
+Applied in `(app)/layout.tsx` and `dashboard/page.tsx` (which had the same latent race in its own
+`Promise.all`). Verified: signed-out and garbage-cookie requests to `/dashboard`, `/log`,
+`/library` and `/settings` all still return **307 → Google**.
 
-**QW4 · Put `set_count` on `ActiveSessionOut`; delete the third layout hop.** Effort **S**.
+### QW4 · `set_count` rides along with the active session — **done**
 
-`getSession(active.id)` exists to compute one integer and drags every set plus full exercise rows
-across the wire. Add the count to `ActiveSessionOut` — **not** `SessionOut`, which is validated
-straight off raw ORM rows at eight call sites across REST *and* MCP and would raise
-`ValidationError` on a required field with no matching attribute. Compute it in
-`services/sessions.get_active_session` so REST and MCP stay in lockstep automatically.
+`getSession(active.id)` existed to compute one integer and dragged every set plus full exercise
+rows across the wire — a whole serial hop in the layout *and* another in the page. The count is
+now computed in `services/sessions.get_active_session` (so REST and MCP stay in lockstep
+automatically) and returned on `ActiveSessionOut` — **not** `SessionOut`, which is validated
+straight off raw ORM rows at eight call sites and would raise on a required field with no matching
+attribute.
 
-### Structural
+It costs nothing to produce: `_activity()` already scanned the session's sets to decide staleness,
+so it now returns `(last_touched, count)` from one aggregate.
 
-**S1 · Make the MCP surface lazy on the REST cold path.** ~96–115 ms of cold import. Effort **M**.
+### S1 · The MCP surface is off the REST cold path — **done**
 
-`app/main.py:33` imports `app.mcp.asgi` at module scope, dragging in the `mcp` SDK, `jsonschema`,
-`sse_starlette` and `uvicorn` on every REST cold start. Measured breakdown of `import app.main`
-(452 ms total, 1041 modules) [measured]:
-
-| module | cost | needed by a REST request? |
-|---|---:|---|
-| `app.mcp.asgi` | ~85–96 ms | no — only `/mcp` |
-| `app.services.images` → `app.images.blob` → `httpx` | ~17–19 ms | no — only illustration generation |
-| `authlib.jose` | ~14–17 ms | no — only the Google callback |
-
-The two small ones are nearly free: move `app.services.images` inside `ensure_illustration`
-(`routers/exercises.py`) and the authlib/httpx imports inside the login/callback handlers
-(`app/auth/google.py`). The MCP one needs a lazy ASGI shim wrapped in `Route("/mcp", …)` to preserve
-the exact-path/no-redirect property claude.ai depends on, plus an MCP-free lifespan holding an
-`AsyncExitStack`. Add a test asserting `"mcp" not in sys.modules` after `import app.main`, or a
-stray future import silently undoes it.
-
-Do **not** also add an `@lru_cache get_mcp()` factory — the whole module body of `app/mcp/server.py`
-is 13.5–17.6 ms against ~100 ms for the SDK import, so it saves nothing once the import is deferred,
-and it breaks the lockstep contract suite `CLAUDE.md` names as a guardrail.
-
-**S2 · Add `loading.tsx` at the ROOT segment**, not `app/(app)/`. Effort **S**.
-
-Both audits landed here independently — one from `next/dist/client/components/layout-router.js`,
-the other from the installed docs (`layout.md:316`): a loading boundary below an uncached layout
-cannot display until that layout finishes. `app/(app)/loading.tsx` wraps the layout's *children*
-and cannot unblock the layout's own awaits. `app/layout.tsx` is synchronous, so `app/loading.tsx`
-streams the whole `(app)` subtree while `<head>` flushes. Give it a minimal shell, not a spinner.
-
-**S3 · Trim the `@/components/dashboard` barrel.** ~8.4 KB gz on `/progress/volume` and
-`/progress/frequency`. Effort **S**. Most of the win is the `next/image` cluster pulled in via
-`PrList` → `IllustrationImage`, not the skills components.
-
-**S4 · `LazyMotion` on `/log/[sessionId]`**, which still ships all 41.6 KB gz — 51% of that route's
-client JS. Effort **M**.
-
-⚠️ The import form matters and the two audits conflicted; resolved by running it [verified]:
+`app/main.py` imported `app.mcp.asgi` at module scope, dragging the `mcp` SDK, `jsonschema`,
+`sse_starlette` and `uvicorn` into every REST cold start. `app.services.images` and
+`authlib.jose` did the same for `httpx` and the JOSE stack.
 
 ```
-motion/react-m  → 165 exports, has 'm'? false, has 'div'? true   (tag names, no m namespace)
-motion/react    → has 'm'? true, LazyMotion? true, domAnimation? true
+import app.main    before 366 ms  →  after 240 ms      (median of 5, same venv, neutral cwd)
 ```
 
-The entrypoint exists but there is no `m` to destructure. Use
-`import { m, LazyMotion, domAnimation } from "motion/react"`, mount `<LazyMotion features={domAnimation} strict>`
-once in the `(app)` layout with `domAnimation` **statically** imported. The async
-`features={() => import(...)}` form is unsafe here: `m` applies `initial` styles regardless of
-features, and `Sheet.tsx` has no `initial={false}` — tapping "add exercise" before the chunk lands
-renders an invisible sheet over an invisible scrim.
+The two small ones were easy — `services.images` moved inside `ensure_illustration`, and
+`httpx`/`authlib` behind accessors in `app/auth/google.py`. The MCP one needed more: the session
+manager's `run()` is an `anyio` task group, and a task group must be entered and exited by the
+**same task**, so it cannot be opened by whichever request arrives first and closed at shutdown.
+`asgi._LazyTransport` instead has the lifespan spawn one worker that parks on an event; the first
+**authorized** `/mcp` request sets it, the worker enters `run()` and stays there until shutdown,
+then exits cleanly. An unauthenticated probe — most of what a public endpoint receives — is
+answered from the 401 path without importing anything.
 
-**S5 · Aggregate `analytics.volume` in SQL.** Caps unbounded growth; ~nothing user-visible today.
+Three tests hold it: a **subprocess** check that `import app.main` leaks none of the six modules
+(an in-process `sys.modules` assertion would be vacuous, since other tests import the SDK
+directly), one that drives the real FastAPI lifespan and asserts the runtime is unbuilt at boot,
+unbuilt after an anonymous probe, and built after an authorized call, and one that a REST-only
+process starts and stops without hanging on the parked worker.
 
-If done, three details are load-bearing: `func.coalesce(func.sum(...), 0)` — a bare `sum()` returns
-`None` for a weighted hold with no reps, and `None` is this API's signal for "bodyweight"; wrap in
-`round(float(...), 3)` for `mypy --strict`; and **keep the Python sort** — DB collation orders
-differently from Python codepoints, which would silently change MCP output.
+### S5 · `analytics.volume` aggregates in SQL — **done**
 
-Separately, cap `services/prs.list_prs` — it is unbounded, joins `Exercise`, and sits above the fold.
+It used to select one row per *set* and fold them in Python, so a year's range shipped thousands
+of rows to produce a few dozen — cost growing with training history rather than with the answer.
+Now one row per exercise. Three details were load-bearing and are in the code comments:
+`coalesce` around each `sum` (an empty group is `NULL`, and `None` already means "bodyweight"
+here), `bool_or(weight_kg IS NULL)` so a partial tonnage is never reported as a real total, and
+**the sort stays in Python** — DB collation orders differently from Python codepoints and would
+silently change MCP output.
 
-**S6 · Suspense-defer the two desktop-only dashboard panels.** 7 → 5 blocking calls.
+### S6 · The desktop-only panels are Suspense-deferred — **done**
 
-Only `getVolume(range)` and `getFrequency` qualify — they feed `.panel`, which is `display: none`
-below 768px. `getSkillsOverview()` does **not**: it feeds the "Top skill" row in `.highlights`,
-which is mobile-visible above the fold. Extracting `PrList` is a regression, not a fix — `listPrs`
-has no React `cache()`, so it would issue a second request for data already needed above the fold.
+`.panel` is `display: none` below 768px, so on the screen size with a latency budget the Volume
+and Frequency panels' data is never seen. Both now fetch inside a `Suspense` boundary: the phone
+screen streams as soon as its own reads land.
 
-Cheaper adjacent win: `listSessions({ limit: 1 })` answers "has this account ever logged anything"
-and is only consulted when the account looks empty — fetch it lazily inside that branch and remove
-a fifth blocking call for every returning user.
+`listPrs` deliberately stays blocking even though Records is also desktop-only — it feeds "Latest
+PR" and the week's PR count above the fold, and it has no React `cache()`, so deferring it would
+issue a *second* request for data the page already needs.
 
-### Rejected — do not ship these
+The lifetime `listSessions({limit: 1})` ("has this account ever logged anything?") is now asked
+only when the answer is in doubt: any PR, or any session in the last nine days, settles it.
+
+### The `??` → `||` footgun — **done**
+
+`lib/api.ts` and `lib/env.ts` resolved their base URLs with `??`, so an env var set to the **empty
+string** — an easy Vercel mistake — was honoured rather than falling back. `SERVER_API_URL = ""`
+means every RSC fetch resolves against a relative base, `getMe()` fails, and the shell redirects
+every signed-in page to login forever. Empty is never a URL anyone meant; both now use `||`.
+
+*(The audit also flagged `.env.production` pinning `API_INTERNAL_URL=http://localhost:8000`. No
+such file exists in the repo or the working tree — `apps/web/.gitignore` covers `.env*`, so if one
+was ever created locally it was never committed. Nothing to fix.)*
+
+### Net effect on one `/dashboard` render
+
+Measured against a local stack (seeded catalog, real session cookie, warm processes — so this is
+the fan-out alone, with all network cost removed):
+
+```
+BASELINE (HEAD)                          AFTER
+ 10 API calls, 273.7 ms API time          8 API calls, 91.5 ms API time
+ all 10 blocking                          6 blocking + 2 deferred behind Suspense
+ /api/sessions/{id} detail hop            gone (QW4)
+ two /api/sessions (window + lifetime)    one (S6 short-circuit)
+ TTFB median 44.5 ms                      TTFB median 15.5 ms
+```
+
+---
+
+## Rejected — and two of these were the audit's own proposals
 
 | Proposal | Why not |
 |---|---|
+| **S4 · `LazyMotion` on `/log/[sessionId]`** | **Measured, and it made the route bigger.** With `m` + a statically-imported `domAnimation`, the route went 79.6 → **86.0 KB gz** (+6.4). The split machinery ships on top of a feature set that is already ≈ what `motion.*` pulled for these opacity/transform animations, so nothing is dropped. The async `features={() => import(…)}` form might do better but is unsafe here: `m` applies `initial` styles regardless of features and `Sheet.tsx` has no `initial={false}`, so tapping "add exercise" before the chunk lands renders an invisible sheet over an invisible scrim. Not worth 6 KB. |
+| **S2 · root `app/loading.tsx`** | **Built, measured, reverted.** It works — `<head>` and a shell flush immediately — but flushing bytes before the `(app)` layout resolves means `redirect()` can no longer be an HTTP redirect. Measured: signed-out `/dashboard` went from **307 + `Location`** to **200 with an in-band, JS-dependent redirect**. That trade made sense at a 3.6 s TTFB; at 222 ms it does not. A shared authed URL should bounce a signed-out visitor at the edge, not after a bundle download. |
+| Capping `services/prs.list_prs` | A naive cap is a silent correctness regression, not a fix: the list is ordered by exercise name, and home derives "latest PR" and "PRs this week" from all of it — truncating would quietly corrupt both. Proper pagination is an API contract change across REST + MCP + generated types for a query already bounded in practice by *exercises trained × 3 metrics*. Revisit only with an `achieved_at`-ordered records feed. |
 | `experimental.cssChunking: 'strict'` | A literal no-op. Its only consumer is the **webpack** config; this project builds with Turbopack. Passes validation, warns nothing, changes zero bytes. |
-| `GET /api/home` aggregate, naive form | The fan-out is already `Promise.all`, so it costs `max()` not `sum()`. Running ~15 statements serially on one `AsyncSession` could be **slower**. A properly aggregated version (4–5 statements, target 2 calls / 8–12 exchanges) is worth revisiting **after** QW1. |
-| `cacheComponents` / PPR | Cannot prerender a static shell *and* keep the auth gate ahead of page data. Moving `requireUser` inside a boundary makes signed-out cold loads hit `error.tsx` instead of redirecting. |
-| `NullPool` / elastic concurrency | The pool is already warm. A fresh connection per request would be ~9 RTT (TCP + TLS + SCRAM) ≈ 1.66 s; measured is 1.105 s = 6 RTT. |
-| `get_db_ro()` on an AUTOCOMMIT engine | Worth ~740 ms/call today, ~8 ms after QW1. Only pursue if QW1 is blocked. |
+| `GET /api/home` aggregate, naive form | The fan-out is already `Promise.all`, so it costs `max()` not `sum()`. Running ~15 statements serially on one `AsyncSession` would now almost certainly be **slower** than 6 parallel calls at ~15 ms each. |
+| `cacheComponents` / PPR | Cannot prerender a static shell *and* keep the auth gate ahead of page data. Moving `requireUser` inside a boundary makes signed-out cold loads hit `error.tsx` instead of redirecting — the same failure QW3 exists to prevent. |
+| Touching `db.py` — `pool_pre_ping`, `NullPool`, `get_db_ro()` | All three were about the 1.1 s `SELECT 1`, which is now 19 ms. `pool_pre_ping` framing was 83% of DB time and is now below the noise floor. The pool was already warm (6 measured RTT vs ~9 for a fresh connection). **Leave `db.py` alone.** |
 
 ---
 
-## A loaded footgun
+## What is left
 
-`.env.production` sets `API_INTERNAL_URL=http://localhost:8000` (also `NEXT_PUBLIC_API_URL`,
-`NEXT_PUBLIC_BASE_URL`), and `lib/api.ts:37` uses it for **every** RSC fetch. Production clearly
-overrides it or nothing would work, but the file is a trap. Also change `??` to `||` on that line:
-`??` is nullish-coalescing, so an empty-string env var yields `SERVER_API_URL = ""` and redirects
-every authenticated page to login forever.
+Nothing on this list is urgent — together they are worth far less than any single item above.
+
+- **Commit the region** to `apps/web/vercel.json` / `apps/api/vercel.json` so it survives a project
+  rebuild instead of living only in the dashboard.
+- **Add `Server-Timing`** to the FastAPI middleware (`db;dur=…, total;dur=…`) and the Next route.
+  The highest-value instrumentation available here: it makes every claim in this document
+  falsifiable in DevTools → Network → Timing.
+- **Measure the real cold-start rate** (Vercel Observability → Functions, cold-start % per route
+  over 24 h). S1 already banked 126 ms of it; this tells you what that is worth.
+- **Prettier has drifted** — 8 authored files under `apps/web` fail `prettier --check` and did
+  before this work. Not a performance item, but it means that gate is red. (The API suite's own
+  red — three tests failing on `ChromaKeyError` — *was* fixed here: the provider stubs handed back
+  placeholder bytes like `b"PNGDATA"`, which stopped decoding once the pipeline gained the chroma
+  key step. `tests/_imagehelp.fake_generated_png()` now returns a real magenta-ground PNG, and a
+  `style_version == "1"` assertion that had rotted through two style bumps behind that failure now
+  asserts against `prompt.STYLE_VERSION`. **267 passed, 0 failed.**)
 
 ---
 
 ## How to measure
 
-Baseline **before** touching anything:
-
 ```bash
-# The headline. Region, then the DB delta.
-curl -sI https://api.tempo.clupai.com/api/health | grep -i x-vercel-id     # expect syd1::iad1::
+# Region, then the DB delta.
+curl -sI https://api.tempo.clupai.com/api/health | grep -i x-vercel-id     # expect syd1::syd1::
 for i in $(seq 1 12); do
   curl -s -m 20 -o /dev/null -w "%{time_starttransfer}\n" https://api.tempo.clupai.com/api/health
 done
@@ -254,27 +248,32 @@ done
 ```
 
 ```bash
-# Python import cost, before and after S1:
+# Python import cost. Run from a neutral cwd against an explicit tree, or `app` resolves from `.`
+# and you will measure the same code twice (this is easy to get wrong):
+cd /tmp && DATABASE_URL=postgresql://x@localhost/x DATABASE_URL_UNPOOLED=postgresql://x@localhost/x \
+  PYTHONPATH=<repo>/apps/api <repo>/apps/api/.venv/bin/python -W ignore \
+  -c 'import time; t=time.perf_counter(); import app.main; print(f"{(time.perf_counter()-t)*1000:.0f} ms")'
+# Attribution:
 cd apps/api && uv run python -X importtime -c 'import app.main' 2>&1 | sort -t'|' -k2 -rn | head -20
 ```
 
 ```bash
-# Per-route JS from the real manifests — Turbopack prints no size table, so `next build` output
-# is useless for this.
+# Per-route client JS from the real manifests — Turbopack prints no size table, so `next build`
+# output is useless for this. Compare two trees; absolute numbers move with Next versions.
 cd apps/web && pnpm build
-for r in "(app)/dashboard" "(app)/log" "(app)/library"; do
-  p=".next/server/app/$r/page_client-reference-manifest.js"
-  echo "== $r"
-  grep -o 'static/chunks/[a-zA-Z0-9_-]*\.js' "$p" | sort -u | while read c; do
-    printf "  %-24s %7s raw %7s gz\n" "$(basename $c)" \
-      "$(stat -f%z .next/$c)" "$(gzip -9 -c .next/$c | wc -c | tr -d ' ')"
+for r in "(app)/dashboard" "(app)/log" "(app)/log/[sessionId]" "(app)/library"; do
+  p=".next/server/app/$r/page_client-reference-manifest.js"; total=0
+  for c in $(grep -o 'static/chunks/[a-zA-Z0-9_/.-]*\.js' "$p" | sort -u); do
+    [ -f ".next/$c" ] && total=$((total + $(gzip -9 -c ".next/$c" | wc -c | tr -d ' ')))
   done
+  printf "%-26s %8.1f KB gz\n" "$r" "$(echo "scale=1; $total/1024" | bc)"
 done
 ```
 
-**Add `Server-Timing`** to the FastAPI middleware (`db;dur=…, total;dur=…`) and to the Next route.
-It is the highest-value instrumentation available here, because it makes every claim in this
-document falsifiable in DevTools' Network → Timing panel.
+To count API calls per render, run the API with `--log-level warning` to a file (it logs one JSON
+line per request), render the page **twice** — the first warms both processes — and read the lines
+after the warm-up. Do not truncate the log with `: >` while uvicorn holds it open: the process
+keeps writing at its old offset and you will silently lose the first requests.
 
 Lighthouse cannot authenticate — run it against a preview deployment and drive an authed session
 with a cookie, or accept that `/` only proves the asset story.
@@ -285,9 +284,6 @@ with a cookie, or accept that `/` only proves the asset story.
 
 | Question | How to settle it |
 |---|---|
-| Is the 9.58 s first request Neon compute resume? 8.2 s is unaccounted for. | Neon Console → Monitoring → look for a compute-suspend/resume event at that timestamp. If so, raise the suspend timeout. |
-| Is `syd1` selectable on this plan? | Settings → Functions → Function Region. Region availability is plan-gated. This is why QW1 says toggle before committing files. |
-| What is the real cold-start rate? | Vercel Observability → Functions → cold-start % per route over 24h. If under 2%, S1 drops below the quick wins. |
-| What is `API_INTERNAL_URL` actually set to in production? | `vercel env pull` in `apps/web`, inspect, delete. |
-| Does the pool really survive between invocations? | The 6-RTT arithmetic says yes but it is inference from wall-clock. Set `echo_pool="debug"` and look for `"Connection %s is fresh, skipping pre-ping"` — it fires **iff** the connection is new. Settle this *before* anyone edits `db.py`. |
+| Is the 9.58 s first request Neon compute resume? Python cold start cannot explain the 8.2 s gap against a 1.41 s warm request. | Neon Console → Monitoring → look for a compute-suspend/resume event at that timestamp. If so, raise the suspend timeout. |
+| What is the real cold-start rate? | Vercel Observability → Functions → cold-start % per route over 24 h. |
 | Real-device hydration cost | DevTools Performance, 4× CPU throttle, on `/dashboard` and `/log/[sessionId]`. |

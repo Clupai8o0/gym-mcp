@@ -7,17 +7,19 @@ import uuid
 import pytest
 from app.core.errors import ServiceError
 from app.images.openai_images import ImageGenerationError
+from app.images.prompt import STYLE_VERSION
 from app.models import Exercise
 from app.services import images
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests._factories import make_user
+from tests._imagehelp import fake_generated_png
 
 
 async def _fake_generate(
     *, prompt: str, size: str | None, quality: str | None, model: str | None, background: str | None
 ) -> bytes:
-    return b"\x89PNG-fake-bytes"
+    return fake_generated_png()
 
 
 async def _fake_upload(*, key: str, data: bytes) -> str:
@@ -43,7 +45,9 @@ async def test_generate_and_store_marks_ready_with_provenance(db_session: AsyncS
     meta = result.illustration_meta
     assert meta is not None
     assert meta["trigger"] == "batch"
-    assert meta["model"] and meta["prompt_hash"] and meta["style_version"] == "1"
+    # Against the constant, not a literal: this asserted "1" and silently rotted through two
+    # style bumps because a stale PNG fixture was failing the test first.
+    assert meta["model"] and meta["prompt_hash"] and meta["style_version"] == STYLE_VERSION
     assert "Bench Press" in meta["prompt"]
 
 

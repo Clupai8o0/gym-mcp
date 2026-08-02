@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { SkillsBoard } from "@/components/dashboard";
+import { SkillsBoard } from "@/components/dashboard/SkillsBoard";
 import { getSkillsOverview } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
 import styles from "../progress.module.css";

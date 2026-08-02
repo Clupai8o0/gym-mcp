@@ -1,7 +1,10 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
-import { SessionStarter, SessionSummaryCard } from "@/components/log";
+// Deep imports, not the `@/components/log` barrel: `SessionLogger` drags the `motion` runtime
+// (~42 KB gz) in with it, and this route never animates. See the ESLint guard on the group.
+import { SessionStarter } from "@/components/log/SessionStarter";
+import { SessionSummaryCard } from "@/components/log/SessionSummaryCard";
 import { Card, LocalTime } from "@/components/ui";
 import { getActiveSession, listSessions } from "@/lib/api";
 import styles from "./page.module.css";
@@ -23,7 +26,10 @@ export default async function LogPage({ searchParams }: { searchParams: Promise<
 
   // "In progress" comes from the server's lifecycle flag (`ended_at IS NULL`), never from a
   // date comparison — that used to evaluate in the server's timezone (Phase 11A).
-  const [{ items }, active] = await Promise.all([listSessions(20), getActiveSession()]);
+  const [{ items }, { session: active }] = await Promise.all([
+    listSessions(20),
+    getActiveSession(),
+  ]);
   const recent = items.filter((session) => session.id !== active?.id);
   const continueHref = active
     ? `/log/${active.id}${exerciseSlug ? `?add=${encodeURIComponent(exerciseSlug)}` : ""}`

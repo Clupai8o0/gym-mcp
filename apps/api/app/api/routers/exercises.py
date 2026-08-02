@@ -14,7 +14,7 @@ from app.schemas.exercises import (
     ExerciseListOut,
     ExerciseOut,
 )
-from app.services import exercises, images
+from app.services import exercises
 
 router = APIRouter(prefix="/api/exercises", tags=["exercises"])
 
@@ -92,5 +92,9 @@ async def ensure_illustration(
     success, or ``generating`` if a batch run is already producing it. 503 if the image
     provider/Blob is unavailable.
     """
+    # Imported here, not at module scope: `services.images` reaches the OpenAI + Blob adapters
+    # and drags `httpx` (~33 ms) into every cold start to serve this one endpoint (docs/13 S1).
+    from app.services import images
+
     exercise = await images.ensure(db, user_id=cu.user_id, exercise_id=exercise_id)
     return ExerciseDetailOut.model_validate(exercise)
