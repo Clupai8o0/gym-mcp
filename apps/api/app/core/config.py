@@ -111,7 +111,10 @@ class Settings(BaseSettings):
     openai_image_model: str = "gpt-image-2"
     openai_image_size: str = "1024x1024"
     openai_image_quality: str = "low"  # low|medium|high — low suits the minimal style
-    openai_image_background: str = "transparent"  # transparent PNG → place on any surface
+    # GPT Image 2 rejects "transparent" (only opaque|auto), so the model paints a flat magenta
+    # key field and app.images.chroma removes it — the stored asset is still a transparent PNG
+    # that can sit on any surface (docs/06). Do not set this to "transparent": the API 400s.
+    openai_image_background: str = "opaque"
 
     @property
     def cors_allow_origins(self) -> list[str]:

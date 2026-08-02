@@ -22,9 +22,17 @@ class BlobUploadError(Exception):
     """Uploading the illustration to Vercel Blob failed."""
 
 
-def blob_key(slug: str) -> str:
-    """The stable object key for an exercise's illustration."""
-    return f"exercises/{slug}.png"
+# The light-mode twin (chroma.invert_neutral) is stored beside the dark original under the same
+# slug. Suffixing rather than using a separate prefix keeps the pair adjacent in the Blob store.
+VARIANT_DARK = "dark"
+VARIANT_LIGHT = "light"
+
+
+def blob_key(slug: str, variant: str = VARIANT_DARK) -> str:
+    """The stable object key for an exercise's illustration in ``variant``."""
+    if variant == VARIANT_DARK:
+        return f"exercises/{slug}.png"
+    return f"exercises/{slug}-{variant}.png"
 
 
 async def upload_png(

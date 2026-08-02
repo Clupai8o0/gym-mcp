@@ -17,6 +17,10 @@ dependencies = [
     "httpx>=0.27",
     "python-multipart>=0.0.9",
     "mcp>=1.2",
+    # Phase 4 (illustrations): GPT Image 2 cannot return alpha, so app.images.chroma keys the
+    # generated magenta field out to real transparency. Pillow's channel ops do this at C speed
+    # (no numpy needed) — see app/images/chroma.py.
+    "pillow>=11.0",
 ]
 
 [dependency-groups]

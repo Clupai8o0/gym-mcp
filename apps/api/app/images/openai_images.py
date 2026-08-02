@@ -26,6 +26,24 @@ class ImageGenerationError(Exception):
     """Image generation failed — missing key, upstream error, or a malformed response."""
 
 
+class ImageSafetyRejection(ImageGenerationError):
+    """The prompt was refused by OpenAI's safety system.
+
+    Distinguished from a generic failure because it is **deterministic**: the same prompt is
+    refused identically on every retry, so the batch's normal resume-and-retry does nothing. The
+    caller must vary the prompt instead (see ``services.images.generate_and_store``).
+
+    In practice this fires on exercise *names*, not on the locked style clauses — the catalog
+    contains entries like "Bottoms Up" and "Groiners" that read as suggestive out of context, and
+    others like "Rope Crunch" / "Neck-SMR" that read as depicting harm to a person.
+    """
+
+
+# Substrings that identify a moderation refusal in the error body, rather than a transport,
+# quota, or malformed-request 400.
+_SAFETY_MARKERS = ("safety system", "moderation_blocked", "content_policy")
+
+
 async def generate_png(
     *,
     prompt: str,
@@ -61,9 +79,12 @@ async def generate_png(
         raise ImageGenerationError(f"OpenAI request failed: {exc}") from exc
 
     if response.status_code != 200:
-        raise ImageGenerationError(
-            f"OpenAI image generation failed ({response.status_code}): {response.text[:200]}"
-        )
+        # NB: not `body` — that name holds the *request* payload above.
+        error_body = response.text
+        message = f"OpenAI image generation failed ({response.status_code}): {error_body[:200]}"
+        if any(marker in error_body.lower() for marker in _SAFETY_MARKERS):
+            raise ImageSafetyRejection(message)
+        raise ImageGenerationError(message)
     try:
         b64 = response.json()["data"][0]["b64_json"]
     except (KeyError, IndexError, TypeError, ValueError) as exc:

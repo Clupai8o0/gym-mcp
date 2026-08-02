@@ -20,10 +20,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import errors
 from app.core.config import get_settings
-from app.images import blob, openai_images
+from app.images import blob, chroma, openai_images
 from app.images import prompt as prompt_builder
 from app.images.blob import BlobUploadError
-from app.images.openai_images import ImageGenerationError
+from app.images.chroma import ChromaKeyError
+from app.images.openai_images import ImageGenerationError, ImageSafetyRejection
 from app.models import Exercise
 from app.services import exercises as exercises_service
 
@@ -85,16 +86,48 @@ async def generate_and_store(
     exercise.illustration_status = STATUS_GENERATING
     await db.flush()
 
+    used_fallback = False
     try:
-        png = await _generate(
-            prompt=prompt,
-            size=settings.openai_image_size,
-            quality=settings.openai_image_quality,
-            model=settings.openai_image_model,
-            background=settings.openai_image_background,
-        )
+        try:
+            png = await _generate(
+                prompt=prompt,
+                size=settings.openai_image_size,
+                quality=settings.openai_image_quality,
+                model=settings.openai_image_model,
+                background=settings.openai_image_background,
+            )
+        except ImageSafetyRejection:
+            # Deterministic refusal — retrying this prompt would fail identically forever, so the
+            # batch's resume pass cannot help. A handful of catalog names read as suggestive or
+            # violent out of context; describe the movement from its attributes instead. One
+            # retry only: if the anonymous prompt is also refused, that is a real failure.
+            prompt = prompt_builder.build_anonymous_prompt(
+                category=exercise.category,
+                force=exercise.force,
+                mechanic=exercise.mechanic,
+                equipment=exercise.equipment,
+                primary_muscles=list(exercise.primary_muscles),
+            )
+            used_fallback = True
+            png = await _generate(
+                prompt=prompt,
+                size=settings.openai_image_size,
+                quality=settings.openai_image_quality,
+                model=settings.openai_image_model,
+                background=settings.openai_image_background,
+            )
+        # The model cannot emit alpha (see chroma.py), so it paints a flat key field that we
+        # strip here — between generation and upload, so only true transparent PNGs reach Blob.
+        png = chroma.key_out_background(png)
+        # The light twin is a local transform of the same pixels, not a second generation: the
+        # pair costs one model call. Upload both before touching the row so a failure on the
+        # second never leaves a 'ready' exercise with only half its art.
+        light_png = chroma.invert_neutral(png)
         url = await _upload(key=blob.blob_key(exercise.slug), data=png)
-    except (ImageGenerationError, BlobUploadError) as exc:
+        light_url = await _upload(
+            key=blob.blob_key(exercise.slug, blob.VARIANT_LIGHT), data=light_png
+        )
+    except (ImageGenerationError, ChromaKeyError, BlobUploadError) as exc:
         exercise.illustration_status = STATUS_FAILED
         exercise.illustration_meta = {
             **(exercise.illustration_meta or {}),
@@ -106,6 +139,7 @@ async def generate_and_store(
         raise
 
     exercise.illustration_url = url
+    exercise.illustration_url_light = light_url
     exercise.illustration_status = STATUS_READY
     exercise.illustration_meta = {
         "model": settings.openai_image_model,
@@ -114,6 +148,10 @@ async def generate_and_store(
         "size": settings.openai_image_size,
         "quality": settings.openai_image_quality,
         "background": settings.openai_image_background,
+        "accent": prompt_builder.ACCENT_COLOR_HEX,
+        # True when the exercise's name was refused by the safety system and the illustration was
+        # generated from its attributes instead — these are worth eyeballing before launch.
+        "anonymous_prompt": used_fallback,
         "style_version": prompt_builder.STYLE_VERSION,
         "trigger": trigger,
         "generated_at": datetime.now(UTC).isoformat(),

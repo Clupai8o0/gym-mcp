@@ -24,6 +24,9 @@ class ExerciseOut(ORMModel):
     primary_muscles: list[str]
     secondary_muscles: list[str]
     illustration_url: str | None
+    # The light-theme twin of ``illustration_url`` (same art, inverted linework, same accent).
+    # Non-NULL whenever ``illustration_url`` is; the client picks per active theme (docs/06).
+    illustration_url_light: str | None
     illustration_status: str
     # Read for the derivation below, but not serialized (internal owner id).
     created_by_user_id: uuid.UUID | None = Field(default=None, exclude=True)

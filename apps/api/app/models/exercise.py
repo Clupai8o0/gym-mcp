@@ -95,6 +95,11 @@ class Exercise(Base):
         ForeignKey("users.id", ondelete="CASCADE")
     )
     illustration_url: Mapped[str | None] = mapped_column(Text)
+    # The light-mode twin: the same art with its achromatic linework inverted so it reads on a
+    # light surface, amber accent untouched (app/images/chroma.invert_neutral). Derived locally
+    # from the same generation — no second model call — and written in the same upload step, so
+    # it is non-NULL exactly when illustration_url is.
+    illustration_url_light: Mapped[str | None] = mapped_column(Text)
     illustration_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
     illustration_meta: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 

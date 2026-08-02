@@ -14,6 +14,8 @@ dependencies = [
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
     "fastapi>=0.115",
+    # app.images.chroma (the transparency pass the batch runs on every generated image).
+    "pillow>=11.0",
 ]
 
 # No [build-system]: a uv "virtual" project (like apps/api). Nothing here is installed; the

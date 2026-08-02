@@ -33,9 +33,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "apps" / "api"))
 from app.core.config import get_settings  # noqa: E402
 from app.core.db import make_asyncpg_url  # noqa: E402
 from app.core.slugs import slugify  # noqa: E402
-from app.images import cost, openai_images  # noqa: E402
+from app.images import chroma, cost, openai_images  # noqa: E402
 from app.images import prompt as prompt_builder  # noqa: E402
 from app.images.blob import BlobUploadError  # noqa: E402
+from app.images.chroma import ChromaKeyError  # noqa: E402
 from app.images.openai_images import ImageGenerationError  # noqa: E402
 from app.models import Exercise  # noqa: E402
 from app.services import images  # noqa: E402
@@ -85,7 +86,7 @@ async def _one(maker: async_sessionmaker, exercise_id: uuid.UUID, sem: asyncio.S
             return "missing"
         try:
             await images.generate_and_store(db, exercise, trigger="batch")
-        except (ImageGenerationError, BlobUploadError):
+        except (ImageGenerationError, ChromaKeyError, BlobUploadError):
             # generate_and_store already flushed 'failed'; commit it so the run is resumable.
             await db.commit()
             return images.STATUS_FAILED
@@ -137,6 +138,11 @@ async def _run_exemplars(args: argparse.Namespace) -> int:
             model=settings.openai_image_model,
             background=settings.openai_image_background,
         )
+        # Key the background out exactly as generate_and_store does, so what you sign off on is
+        # what ships. --keep-raw also writes the pre-key frame for diagnosing the chroma pass.
+        if args.keep_raw:
+            (out / f"{slugify(name)}.raw.png").write_bytes(png)
+        png = chroma.key_out_background(png)
         (out / f"{slugify(name)}.png").write_bytes(png)
         print(f"wrote {name}")
     print(
@@ -170,6 +176,11 @@ def main() -> int:
         "--exemplars",
         metavar="DIR",
         help="generate the style exemplars to DIR for design sign-off (no DB/Blob writes)",
+    )
+    parser.add_argument(
+        "--keep-raw",
+        action="store_true",
+        help="with --exemplars, also write the pre-chroma-key frame as <slug>.raw.png",
     )
     return asyncio.run(run(parser.parse_args()))
 
