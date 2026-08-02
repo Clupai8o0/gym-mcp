@@ -22,6 +22,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, created_at_col, updated_at_col, uuid_pk
+from app.models.soft_delete import deleted_at_col, deleted_at_index
 
 
 class Exercise(Base):
@@ -68,6 +69,7 @@ class Exercise(Base):
             text("name gin_trgm_ops"),
             postgresql_using="gin",
         ),
+        deleted_at_index("exercises"),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -103,5 +105,53 @@ class Exercise(Base):
     illustration_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
     illustration_meta: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
+    #: Soft delete — only ever set on a **custom** row. A catalog row is shared reference data;
+    #: deleting one is not a correction, it is a schema change, and the service refuses.
+    deleted_at: Mapped[datetime | None] = deleted_at_col()
+
     created_at: Mapped[datetime] = created_at_col()
     updated_at: Mapped[datetime] = updated_at_col()
+
+
+class ExerciseSlugAlias(Base):
+    """A slug an exercise used to have, still resolvable.
+
+    Renaming a custom exercise regenerates its slug, and a slug is a public identifier: an MCP
+    client that stored ``rings-dip`` should not get a 404 because the name was corrected to
+    "Ring Dips". The alias keeps the old reference working; the exercise's own ``slug`` column is
+    always the current one, so nothing about display or new links changes.
+
+    Aliases lose to live slugs on lookup (``services/exercises.resolve_ref``) — a name that is
+    somebody's current slug can never be shadowed by somebody else's history.
+    """
+
+    __tablename__ = "exercise_slug_aliases"
+    __table_args__ = (
+        # Same shape as the live-slug indexes: unique among global rows, unique per owner among
+        # custom ones, so an alias can never introduce an ambiguity a live slug could not.
+        Index(
+            "exercise_slug_aliases_global_uidx",
+            "slug",
+            unique=True,
+            postgresql_where=text("created_by_user_id IS NULL"),
+        ),
+        Index(
+            "exercise_slug_aliases_custom_uidx",
+            "created_by_user_id",
+            "slug",
+            unique=True,
+            postgresql_where=text("created_by_user_id IS NOT NULL"),
+        ),
+        Index("exercise_slug_aliases_exercise_idx", "exercise_id"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    exercise_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("exercises.id", ondelete="CASCADE"), nullable=False
+    )
+    #: Denormalized from the exercise so the partial unique indexes above can be expressed here.
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE")
+    )
+    slug: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = created_at_col()

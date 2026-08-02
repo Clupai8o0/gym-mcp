@@ -5,19 +5,22 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser, Pagination, current_user, get_db, pagination
 from app.schemas.sessions import (
     ActiveSessionOut,
     SessionCreate,
+    SessionDeleteOut,
     SessionDetailOut,
     SessionListOut,
     SessionOut,
     SessionUpdate,
+    SessionWithSetsCreate,
+    SessionWithSetsOut,
 )
-from app.schemas.sets import LoggedSetOut, SetCreate
+from app.schemas.sets import LoggedSetOut, LoggedSetsOut, SetBulkCreate, SetCreate
 from app.services import sessions, sets
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
@@ -74,6 +77,29 @@ async def get_active_session(
     )
 
 
+# Literal paths before "/{session_id}", for the same reason "/active" is above it.
+@router.post("/with-sets", response_model=SessionWithSetsOut, status_code=201)
+async def create_session_with_sets(
+    payload: SessionWithSetsCreate,
+    cu: CurrentUser = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+) -> SessionWithSetsOut:
+    """Create a session and its sets in one transaction — all or nothing."""
+    body = payload.model_dump()
+    drafts = body.pop("sets")
+    session = await sessions.create(db, user_id=cu.user_id, **body)
+    logged = await sets.log_sets(
+        db,
+        user_id=cu.user_id,
+        session_id=session.id,
+        drafts=[sets.SetDraft(**draft) for draft in drafts],
+    )
+    return SessionWithSetsOut(
+        session=SessionOut.model_validate(session),
+        sets=[LoggedSetOut.from_logged(row) for row in logged],
+    )
+
+
 @router.get("/{session_id}", response_model=SessionDetailOut)
 async def get_session(
     session_id: uuid.UUID,
@@ -91,23 +117,36 @@ async def update_session(
     cu: CurrentUser = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ) -> SessionOut:
+    changes = payload.model_dump(exclude_unset=True)
+    clear_notes = bool(changes.pop("clear_notes", False))
     session = await sessions.update(
         db,
         user_id=cu.user_id,
         session_id=session_id,
-        changes=payload.model_dump(exclude_unset=True),
+        changes=changes,
+        clear_notes=clear_notes,
     )
     return SessionOut.model_validate(session)
 
 
-@router.delete("/{session_id}", status_code=204)
+@router.delete("/{session_id}", response_model=SessionDeleteOut)
 async def delete_session(
     session_id: uuid.UUID,
     cu: CurrentUser = Depends(current_user),
     db: AsyncSession = Depends(get_db),
-) -> Response:
-    await sessions.delete(db, user_id=cu.user_id, session_id=session_id)
-    return Response(status_code=204)
+    cascade: bool = Query(default=True),
+    dry_run: bool = Query(default=False),
+) -> SessionDeleteOut:
+    """Soft-delete a session and (with `cascade`) its sets, recalculating every PR affected."""
+    result = await sessions.delete(
+        db, user_id=cu.user_id, session_id=session_id, cascade=cascade, dry_run=dry_run
+    )
+    return SessionDeleteOut(
+        session=SessionOut.model_validate(result.session),
+        set_count=result.set_count,
+        exercises_recalculated=result.exercises_recalculated,
+        dry_run=result.dry_run,
+    )
 
 
 @router.post("/{session_id}/finish", response_model=SessionOut)
@@ -119,6 +158,23 @@ async def finish_session(
     """Close a session and store its duration. Idempotent — finishing a finished one is a no-op."""
     session = await sessions.finish_session(db, user_id=cu.user_id, session_id=session_id)
     return SessionOut.model_validate(session)
+
+
+@router.post("/{session_id}/sets/bulk", response_model=LoggedSetsOut, status_code=201)
+async def log_sets(
+    session_id: uuid.UUID,
+    payload: SetBulkCreate,
+    cu: CurrentUser = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+) -> LoggedSetsOut:
+    """Log many sets into one session transactionally, with a PR verdict for each."""
+    logged = await sets.log_sets(
+        db,
+        user_id=cu.user_id,
+        session_id=session_id,
+        drafts=[sets.SetDraft(**draft.model_dump()) for draft in payload.sets],
+    )
+    return LoggedSetsOut(items=[LoggedSetOut.from_logged(row) for row in logged])
 
 
 @router.post("/{session_id}/sets", response_model=LoggedSetOut, status_code=201)
@@ -139,5 +195,7 @@ async def log_set(
         hold_seconds=payload.hold_seconds,
         rpe=payload.rpe,
         notes=payload.notes,
+        is_backfill=payload.is_backfill,
+        client_key=payload.client_key,
     )
     return LoggedSetOut.from_logged(logged)

@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from app.core.errors import ServiceError
-from app.models import WorkoutSession
+from app.models import ExerciseSet, WorkoutSession
 from app.services import sessions, sets
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -48,6 +48,13 @@ async def test_update_changes_only_supplied_fields(db_session: AsyncSession) -> 
 
 
 async def test_delete_cascades_sets(db_session: AsyncSession) -> None:
+    """Delete is now **soft**: the row survives so it can be restored, but nothing reads it.
+
+    The old assertion was `remaining is None`, which only ever proved the FK cascade fired. What
+    actually matters is that the session leaves every read and takes its sets with it — a set
+    still counting toward records and volume under a workout that no longer happened is exactly
+    the state a cascade is supposed to prevent.
+    """
     user = await make_user(db_session)
     exercise = await make_global_exercise(db_session)
     session = await make_session(db_session, user_id=user.id)
@@ -60,12 +67,76 @@ async def test_delete_cascades_sets(db_session: AsyncSession) -> None:
         reps=5,
     )
 
-    await sessions.delete(db_session, user_id=user.id, session_id=session.id)
+    result = await sessions.delete(db_session, user_id=user.id, session_id=session.id)
+    assert result.set_count == 1 and result.exercises_recalculated == 1
 
+    rows, total = await sessions.list_sessions(db_session, user_id=user.id)
+    assert total == 0 and rows == []
+    with pytest.raises(ServiceError):
+        await sessions.get(db_session, user_id=user.id, session_id=session.id)
+
+    # The row is still there — that is what makes it restorable.
     remaining = (
         await db_session.execute(select(WorkoutSession).where(WorkoutSession.id == session.id))
     ).scalar_one_or_none()
-    assert remaining is None
+    assert remaining is not None and remaining.deleted_at is not None
+
+    live_sets = (
+        (
+            await db_session.execute(
+                select(ExerciseSet).where(
+                    ExerciseSet.session_id == session.id, ExerciseSet.deleted_at.is_(None)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert live_sets == []
+
+
+async def test_delete_without_cascade_refuses_and_says_how_many(
+    db_session: AsyncSession,
+) -> None:
+    user = await make_user(db_session)
+    exercise = await make_global_exercise(db_session)
+    session = await make_session(db_session, user_id=user.id)
+    for number in (1, 2):
+        await sets.log_set(
+            db_session,
+            user_id=user.id,
+            session_id=session.id,
+            exercise_id=exercise.id,
+            set_number=number,
+            reps=5,
+        )
+
+    with pytest.raises(ServiceError) as caught:
+        await sessions.delete(db_session, user_id=user.id, session_id=session.id, cascade=False)
+    assert "2 sets" in caught.value.message
+    assert (await sessions.get(db_session, user_id=user.id, session_id=session.id)) is not None
+
+
+async def test_delete_dry_run_reports_without_deleting(db_session: AsyncSession) -> None:
+    user = await make_user(db_session)
+    exercise = await make_global_exercise(db_session)
+    session = await make_session(db_session, user_id=user.id)
+    await sets.log_set(
+        db_session,
+        user_id=user.id,
+        session_id=session.id,
+        exercise_id=exercise.id,
+        set_number=1,
+        reps=5,
+    )
+
+    preview = await sessions.delete(
+        db_session, user_id=user.id, session_id=session.id, dry_run=True
+    )
+    assert preview.dry_run is True and preview.set_count == 1
+
+    _rows, total = await sessions.list_sessions(db_session, user_id=user.id)
+    assert total == 1, "a dry run must change nothing"
 
 
 async def test_list_filters_by_type(db_session: AsyncSession) -> None:

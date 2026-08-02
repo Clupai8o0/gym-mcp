@@ -20,6 +20,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -32,6 +33,12 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, created_at_col, uuid_pk
+from app.models.soft_delete import (
+    client_key_col,
+    client_key_index,
+    deleted_at_col,
+    deleted_at_index,
+)
 
 #: The concrete record metrics. ``exercise_sets.pr_type`` may also hold ``'first_log'``, which
 #: ``services/sets._concrete_metric`` collapses into one of these before a record is written.
@@ -105,6 +112,8 @@ class PersonalRecordHistory(Base):
             unique=True,
             postgresql_where=text("set_id IS NOT NULL"),
         ),
+        client_key_index("personal_records_history"),
+        deleted_at_index("personal_records_history"),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -125,4 +134,21 @@ class PersonalRecordHistory(Base):
         ForeignKey("workout_sessions.id", ondelete="SET NULL")
     )
     notes: Mapped[str | None] = mapped_column(Text)
+    #: Did this entry actually set a record? Maintained by the recalculation, for both sources.
+    #:
+    #: ``auto`` rows are only ever written when they count, so this is always true for them. It
+    #: exists for ``manual`` rows, which are **inputs** rather than derived output: a hand-entered
+    #: claim has to survive in the table so the replay can use it as a floor, but it must not show
+    #: up in the chronology if it never beat the running best at its own moment — otherwise
+    #: history stops being monotonic, which is the one property it is supposed to guarantee.
+    #:
+    #: A claim can flip back to counting later (delete the set that outranked it) precisely
+    #: because the row was kept rather than rejected.
+    counted: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    #: Soft delete. This is the table a correction actually acts on: a `manual` row is the
+    #: user's standing claim, so removing it is what makes the recalculation forget the claim.
+    #: `auto` rows are derived and are rebuilt on the next recompute regardless.
+    deleted_at: Mapped[datetime | None] = deleted_at_col()
+    #: Caller-supplied idempotency key; a repeat `log_pr` with the same key returns the original.
+    client_key: Mapped[str | None] = client_key_col()
     created_at: Mapped[datetime] = created_at_col()

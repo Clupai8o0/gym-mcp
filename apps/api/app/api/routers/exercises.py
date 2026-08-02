@@ -10,9 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import CurrentUser, Pagination, current_user, get_db, pagination
 from app.schemas.exercises import (
     ExerciseCreate,
+    ExerciseDeleteOut,
     ExerciseDetailOut,
     ExerciseListOut,
     ExerciseOut,
+    ExerciseUpdate,
 )
 from app.services import exercises
 
@@ -78,6 +80,49 @@ async def get_exercise(
 ) -> ExerciseDetailOut:
     exercise = await exercises.get(db, user_id=cu.user_id, exercise_id=exercise_id)
     return ExerciseDetailOut.model_validate(exercise)
+
+
+@router.patch("/{exercise_id}", response_model=ExerciseDetailOut)
+async def update_exercise(
+    exercise_id: uuid.UUID,
+    payload: ExerciseUpdate,
+    cu: CurrentUser = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ExerciseDetailOut:
+    """Edit a **custom** exercise. Renaming regenerates the slug, keeping the old one as an alias."""
+    exercise = await exercises.update_custom(
+        db,
+        user_id=cu.user_id,
+        exercise_id=exercise_id,
+        changes=payload.model_dump(exclude_unset=True),
+    )
+    return ExerciseDetailOut.model_validate(exercise)
+
+
+@router.delete("/{exercise_id}", response_model=ExerciseDeleteOut)
+async def delete_exercise(
+    exercise_id: uuid.UUID,
+    cu: CurrentUser = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+    reassign_to: uuid.UUID | None = Query(default=None),
+    dry_run: bool = Query(default=False),
+) -> ExerciseDeleteOut:
+    """Soft-delete a custom exercise, refusing to orphan the sets that reference it."""
+    result = await exercises.delete_custom(
+        db,
+        user_id=cu.user_id,
+        exercise_id=exercise_id,
+        reassign_to=reassign_to,
+        dry_run=dry_run,
+    )
+    return ExerciseDeleteOut(
+        exercise=ExerciseOut.model_validate(result.exercise),
+        set_count=result.set_count,
+        reassigned_to=(
+            ExerciseOut.model_validate(result.reassigned_to) if result.reassigned_to else None
+        ),
+        dry_run=result.dry_run,
+    )
 
 
 @router.post("/{exercise_id}/illustration", response_model=ExerciseDetailOut)

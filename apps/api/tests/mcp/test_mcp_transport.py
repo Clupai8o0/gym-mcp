@@ -55,7 +55,19 @@ async def test_tools_list_exposes_the_full_surface(
     assert {"get_active_session", "finish_session"} <= names  # Phase 11A lifecycle
     assert {"log_pr", "get_pr_history"} <= names  # manual PR entry
     assert {"update_session"} <= names  # post-hoc session correction
-    assert len(names) == 19
+    # Corrections (docs/02 §Corrections): every write now has an undo, and the record tables
+    # have a repair path. `restore` covers all four soft-deletable entity types.
+    assert {"update_set", "update_custom_exercise", "update_pr"} <= names
+    assert {
+        "delete_set",
+        "delete_session",
+        "delete_custom_exercise",
+        "delete_pr",
+        "delete_pr_history_entry",
+    } <= names
+    assert {"recalculate_prs", "verify_pr_integrity", "restore", "purge_deleted"} <= names
+    assert {"log_sets", "log_session_with_sets"} <= names  # transactional bulk writes
+    assert len(names) == 33
 
 
 async def test_guide_resource_readable(mcp_http: AsyncClient, db_session: AsyncSession) -> None:
@@ -208,7 +220,7 @@ async def test_the_runtime_boots_lazily_under_the_real_lifespan(db_session: Asyn
 
                 authorized = await rpc(client, "tools/list", token=tokens.access_token)
                 assert authorized.status_code == 200
-                assert len(authorized.json()["result"]["tools"]) == 19
+                assert len(authorized.json()["result"]["tools"]) == 33
                 assert server.session_manager_started()
 
                 # Second call: the transport is already up, nothing restarts.

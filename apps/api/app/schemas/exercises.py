@@ -64,3 +64,30 @@ class ExerciseCreate(BaseModel):
     primary_muscles: list[str] = Field(default_factory=list)
     secondary_muscles: list[str] = Field(default_factory=list)
     instructions: list[str] = Field(default_factory=list)
+
+
+class ExerciseUpdate(BaseModel):
+    """Patch a **custom** exercise; only supplied fields change.
+
+    No ``slug``: it is derived from ``name``, so the two cannot drift. Renaming keeps the old slug
+    resolvable as an alias.
+    """
+
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    category: str | None = None
+    force: str | None = None
+    level: str | None = None
+    mechanic: str | None = None
+    equipment: str | None = None
+    primary_muscles: list[str] | None = None
+    secondary_muscles: list[str] | None = None
+    instructions: list[str] | None = None
+
+
+class ExerciseDeleteOut(BaseModel):
+    """What a custom-exercise delete did — or, with ``dry_run``, would have done."""
+
+    exercise: ExerciseOut
+    set_count: int
+    reassigned_to: ExerciseOut | None
+    dry_run: bool

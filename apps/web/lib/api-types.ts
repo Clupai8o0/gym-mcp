@@ -91,10 +91,18 @@ export interface paths {
         get: operations["get_exercise_api_exercises__exercise_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Exercise
+         * @description Soft-delete a custom exercise, refusing to orphan the sets that reference it.
+         */
+        delete: operations["delete_exercise_api_exercises__exercise_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Update Exercise
+         * @description Edit a **custom** exercise. Renaming regenerates the slug, keeping the old one as an alias.
+         */
+        patch: operations["update_exercise_api_exercises__exercise_id__patch"];
         trace?: never;
     };
     "/api/exercises/{exercise_id}/illustration": {
@@ -159,6 +167,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sessions/with-sets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Session With Sets
+         * @description Create a session and its sets in one transaction — all or nothing.
+         */
+        post: operations["create_session_with_sets_api_sessions_with_sets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sessions/{session_id}": {
         parameters: {
             query?: never;
@@ -170,7 +198,10 @@ export interface paths {
         get: operations["get_session_api_sessions__session_id__get"];
         put?: never;
         post?: never;
-        /** Delete Session */
+        /**
+         * Delete Session
+         * @description Soft-delete a session and (with `cascade`) its sets, recalculating every PR affected.
+         */
         delete: operations["delete_session_api_sessions__session_id__delete"];
         options?: never;
         head?: never;
@@ -192,6 +223,26 @@ export interface paths {
          * @description Close a session and store its duration. Idempotent — finishing a finished one is a no-op.
          */
         post: operations["finish_session_api_sessions__session_id__finish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{session_id}/sets/bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Log Sets
+         * @description Log many sets into one session transactionally, with a PR verdict for each.
+         */
+        post: operations["log_sets_api_sessions__session_id__sets_bulk_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -225,7 +276,13 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Delete Set */
+        /**
+         * Delete Set
+         * @description Soft-delete a set and recompute its exercise's records.
+         *
+         *     Returns the removed row rather than 204 so the caller has the id to `restore` with, and can
+         *     see it really was this set. The record it may have held falls back to the next best.
+         */
         delete: operations["delete_set_api_sets__set_id__delete"];
         options?: never;
         head?: never;
@@ -252,6 +309,50 @@ export interface paths {
          */
         post: operations["log_pr_api_prs_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/prs/{pr_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Pr
+         * @description Withdraw a hand-entered record; the next best becomes current rather than leaving a gap.
+         */
+        delete: operations["delete_pr_api_prs__pr_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Pr
+         * @description Correct a hand-entered record in place, without the delete-and-reinsert dance.
+         */
+        patch: operations["update_pr_api_prs__pr_id__patch"];
+        trace?: never;
+    };
+    "/api/prs/history/{entry_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Pr History Entry
+         * @description Remove one chronology entry, then rebuild the record from what is left.
+         */
+        delete: operations["delete_pr_history_entry_api_prs_history__entry_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -388,6 +489,86 @@ export interface paths {
         post?: never;
         /** Revoke Connection */
         delete: operations["revoke_connection_api_connections__client_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/corrections/recalculate-prs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Recalculate Prs
+         * @description Rebuild personal records and their chronology from the live sets + hand-entered claims.
+         */
+        post: operations["recalculate_prs_api_corrections_recalculate_prs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/corrections/verify-prs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Verify Prs
+         * @description Read-only: report any exercise whose record tables disagree with themselves.
+         */
+        get: operations["verify_prs_api_corrections_verify_prs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/corrections/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore
+         * @description Undo a soft delete and rebuild whatever records depended on the row being gone.
+         */
+        post: operations["restore_api_corrections_restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/corrections/purge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Purge
+         * @description Hard-delete rows soft-deleted longer ago than ``older_than_days``. Irreversible.
+         */
+        post: operations["purge_api_corrections_purge_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -679,6 +860,18 @@ export interface components {
             instructions?: string[];
         };
         /**
+         * ExerciseDeleteOut
+         * @description What a custom-exercise delete did — or, with ``dry_run``, would have done.
+         */
+        ExerciseDeleteOut: {
+            exercise: components["schemas"]["ExerciseOut"];
+            /** Set Count */
+            set_count: number;
+            reassigned_to: components["schemas"]["ExerciseOut"] | null;
+            /** Dry Run */
+            dry_run: boolean;
+        };
+        /**
          * ExerciseDetailOut
          * @description Full detail: adds the how-to steps + provenance/timestamps.
          */
@@ -716,7 +909,7 @@ export interface components {
              * Is Custom
              * @default false
              */
-            is_custom: boolean;
+            is_custom?: boolean;
             /** Instructions */
             instructions: string[];
             /** Source */
@@ -781,7 +974,7 @@ export interface components {
              * Is Custom
              * @default false
              */
-            is_custom: boolean;
+            is_custom?: boolean;
         };
         /**
          * ExerciseSetGroup
@@ -791,6 +984,33 @@ export interface components {
             exercise: components["schemas"]["ExerciseOut"];
             /** Sets */
             sets: components["schemas"]["SetOut"][];
+        };
+        /**
+         * ExerciseUpdate
+         * @description Patch a **custom** exercise; only supplied fields change.
+         *
+         *     No ``slug``: it is derived from ``name``, so the two cannot drift. Renaming keeps the old slug
+         *     resolvable as an alias.
+         */
+        ExerciseUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Category */
+            category?: string | null;
+            /** Force */
+            force?: string | null;
+            /** Level */
+            level?: string | null;
+            /** Mechanic */
+            mechanic?: string | null;
+            /** Equipment */
+            equipment?: string | null;
+            /** Primary Muscles */
+            primary_muscles?: string[] | null;
+            /** Secondary Muscles */
+            secondary_muscles?: string[] | null;
+            /** Instructions */
+            instructions?: string[] | null;
         };
         /** FrequencyItem */
         FrequencyItem: {
@@ -814,10 +1034,40 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** IntegrityOut */
+        IntegrityOut: {
+            /** Ok */
+            ok: boolean;
+            /** Checked Exercises */
+            checked_exercises: number;
+            /** Problems */
+            problems: components["schemas"]["IntegrityProblemOut"][];
+        };
+        /** IntegrityProblemOut */
+        IntegrityProblemOut: {
+            /**
+             * Exercise Id
+             * Format: uuid
+             */
+            exercise_id: string;
+            /** Exercise Name */
+            exercise_name: string;
+            /** Pr Type */
+            pr_type: string;
+            /** Kind */
+            kind: string;
+            /** Detail */
+            detail: string;
+        };
         /** LoggedSetOut */
         LoggedSetOut: {
             set: components["schemas"]["SetOut"];
             pr: components["schemas"]["PrInfo"];
+        };
+        /** LoggedSetsOut */
+        LoggedSetsOut: {
+            /** Items */
+            items: components["schemas"]["LoggedSetOut"][];
         };
         /** MeOut */
         MeOut: {
@@ -854,6 +1104,29 @@ export interface components {
             unit_pref: "kg" | "lb";
         };
         /**
+         * MetricResultOut
+         * @description What a rebuild produced for one (exercise, metric).
+         */
+        MetricResultOut: {
+            /**
+             * Exercise Id
+             * Format: uuid
+             */
+            exercise_id: string;
+            /** Exercise Name */
+            exercise_name: string;
+            /** Pr Type */
+            pr_type: string;
+            /** Value */
+            value: number | null;
+            /** Source */
+            source: string | null;
+            /** Entries */
+            entries: number;
+            /** Changed */
+            changed: boolean;
+        };
+        /**
          * PrCreate
          * @description A hand-entered record. ``unit`` is not a field — it follows from ``pr_type``.
          */
@@ -876,6 +1149,15 @@ export interface components {
             session_id?: string | null;
             /** Notes */
             notes?: string | null;
+            /** Client Key */
+            client_key?: string | null;
+        };
+        /**
+         * PrDeleteOut
+         * @description What is standing after a record was withdrawn — ``null`` if nothing supports one.
+         */
+        PrDeleteOut: {
+            standing: components["schemas"]["PrOut"] | null;
         };
         /**
          * PrHistoryItem
@@ -910,6 +1192,10 @@ export interface components {
             session_id: string | null;
             /** Notes */
             notes: string | null;
+            /** Counted */
+            counted: boolean;
+            /** Deleted At */
+            deleted_at: string | null;
         };
         /** PrHistoryOut */
         PrHistoryOut: {
@@ -986,6 +1272,23 @@ export interface components {
             is_custom: boolean;
         };
         /**
+         * PrUpdate
+         * @description Correct a hand-entered record in place. Only supplied fields change.
+         */
+        PrUpdate: {
+            /** Value */
+            value?: number | null;
+            /** Achieved At */
+            achieved_at?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Clear Notes
+             * @default false
+             */
+            clear_notes?: boolean;
+        };
+        /**
          * ProtectedResourceMetadata
          * @description RFC 9728 PRM (``/.well-known/oauth-protected-resource``).
          */
@@ -998,6 +1301,65 @@ export interface components {
             scopes_supported: string[];
             /** Bearer Methods Supported */
             bearer_methods_supported: string[];
+        };
+        /** PurgeIn */
+        PurgeIn: {
+            /** Older Than Days */
+            older_than_days: number;
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run?: boolean;
+        };
+        /** PurgeOut */
+        PurgeOut: {
+            /** Older Than Days */
+            older_than_days: number;
+            /** Total */
+            total: number;
+            /** Counts */
+            counts: {
+                [key: string]: number;
+            };
+            /** Dry Run */
+            dry_run: boolean;
+        };
+        /** RecalculationOut */
+        RecalculationOut: {
+            /** Exercises */
+            exercises: number;
+            /** Changed */
+            changed: components["schemas"]["MetricResultOut"][];
+            /** Metrics */
+            metrics: components["schemas"]["MetricResultOut"][];
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run?: boolean;
+        };
+        /** RestoreIn */
+        RestoreIn: {
+            /** Entity Type */
+            entity_type: string;
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+        };
+        /** RestoreOut */
+        RestoreOut: {
+            /** Entity Type */
+            entity_type: string;
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Exercises Recalculated */
+            exercises_recalculated: number;
         };
         /**
          * RevokeConnectionOut
@@ -1026,6 +1388,21 @@ export interface components {
             notes?: string | null;
             /** Duration Minutes */
             duration_minutes?: number | null;
+            /** Client Key */
+            client_key?: string | null;
+        };
+        /**
+         * SessionDeleteOut
+         * @description What a delete did — or, with ``dry_run``, would have done.
+         */
+        SessionDeleteOut: {
+            session: components["schemas"]["SessionOut"];
+            /** Set Count */
+            set_count: number;
+            /** Exercises Recalculated */
+            exercises_recalculated: number;
+            /** Dry Run */
+            dry_run: boolean;
         };
         /**
          * SessionDetailOut
@@ -1102,10 +1479,15 @@ export interface components {
         /**
          * SessionUpdate
          * @description Patch session metadata; only supplied fields change.
+         *
+         *     ``clear_notes`` rather than a nullable ``notes``: in a partial update ``null`` already means
+         *     "leave alone", so emptying a field needs its own word.
          */
         SessionUpdate: {
             /** Performed At */
             performed_at?: string | null;
+            /** Ended At */
+            ended_at?: string | null;
             /** Title */
             title?: string | null;
             /** Type */
@@ -1114,6 +1496,48 @@ export interface components {
             notes?: string | null;
             /** Duration Minutes */
             duration_minutes?: number | null;
+            /**
+             * Clear Notes
+             * @default false
+             */
+            clear_notes?: boolean;
+        };
+        /**
+         * SessionWithSetsCreate
+         * @description Create a session and its sets in one transaction (all or nothing).
+         */
+        SessionWithSetsCreate: {
+            /**
+             * Performed At
+             * Format: date-time
+             */
+            performed_at: string;
+            /** Title */
+            title?: string | null;
+            /** Type */
+            type?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Duration Minutes */
+            duration_minutes?: number | null;
+            /** Client Key */
+            client_key?: string | null;
+            /** Sets */
+            sets: components["schemas"]["SetCreate"][];
+        };
+        /** SessionWithSetsOut */
+        SessionWithSetsOut: {
+            session: components["schemas"]["SessionOut"];
+            /** Sets */
+            sets: components["schemas"]["LoggedSetOut"][];
+        };
+        /**
+         * SetBulkCreate
+         * @description Log many sets into one session as a single transaction (all or nothing).
+         */
+        SetBulkCreate: {
+            /** Sets */
+            sets: components["schemas"]["SetCreate"][];
         };
         /**
          * SetCreate
@@ -1137,6 +1561,13 @@ export interface components {
             rpe?: number | null;
             /** Notes */
             notes?: string | null;
+            /**
+             * Is Backfill
+             * @default false
+             */
+            is_backfill?: boolean;
+            /** Client Key */
+            client_key?: string | null;
         };
         /** SetOut */
         SetOut: {
@@ -1171,6 +1602,8 @@ export interface components {
             pr_type: string | null;
             /** Notes */
             notes: string | null;
+            /** Is Backfill */
+            is_backfill: boolean;
             /**
              * Created At
              * Format: date-time
@@ -1526,6 +1959,75 @@ export interface operations {
             };
         };
     };
+    delete_exercise_api_exercises__exercise_id__delete: {
+        parameters: {
+            query?: {
+                reassign_to?: string | null;
+                dry_run?: boolean;
+            };
+            header?: never;
+            path: {
+                exercise_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExerciseDeleteOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_exercise_api_exercises__exercise_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExerciseUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExerciseDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     ensure_illustration_api_exercises__exercise_id__illustration_post: {
         parameters: {
             query?: never;
@@ -1645,6 +2147,39 @@ export interface operations {
             };
         };
     };
+    create_session_with_sets_api_sessions_with_sets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionWithSetsCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionWithSetsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_session_api_sessions__session_id__get: {
         parameters: {
             query?: never;
@@ -1678,7 +2213,10 @@ export interface operations {
     };
     delete_session_api_sessions__session_id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                cascade?: boolean;
+                dry_run?: boolean;
+            };
             header?: never;
             path: {
                 session_id: string;
@@ -1688,11 +2226,13 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            204: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["SessionDeleteOut"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -1771,6 +2311,41 @@ export interface operations {
             };
         };
     };
+    log_sets_api_sessions__session_id__sets_bulk_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetBulkCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoggedSetsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     log_set_api_sessions__session_id__sets_post: {
         parameters: {
             query?: never;
@@ -1818,11 +2393,13 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            204: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["SetOut"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -1934,11 +2511,110 @@ export interface operations {
             };
         };
     };
+    delete_pr_api_prs__pr_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pr_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrDeleteOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_pr_api_prs__pr_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pr_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_pr_history_entry_api_prs_history__entry_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrHistoryItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     pr_history_api_prs_history_get: {
         parameters: {
             query: {
                 exercise_id: string;
                 pr_type: string;
+                include_deleted?: boolean;
+                include_uncounted?: boolean;
             };
             header?: never;
             path?: never;
@@ -2154,6 +2830,136 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RevokeConnectionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recalculate_prs_api_corrections_recalculate_prs_post: {
+        parameters: {
+            query?: {
+                exercise_id?: string | null;
+                pr_type?: string | null;
+                dry_run?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecalculationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_prs_api_corrections_verify_prs_get: {
+        parameters: {
+            query?: {
+                exercise_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrityOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_api_corrections_restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestoreIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RestoreOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    purge_api_corrections_purge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PurgeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurgeOut"];
                 };
             };
             /** @description Validation Error */

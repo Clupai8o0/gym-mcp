@@ -10,7 +10,7 @@ the data-model phase could complete independently; they are added by Phase 3 (do
 from __future__ import annotations
 
 from app.models.base import Base
-from app.models.exercise import Exercise
+from app.models.exercise import Exercise, ExerciseSlugAlias
 from app.models.exercise_set import ExerciseSet
 from app.models.oauth import (
     OAuthAccessToken,
@@ -33,6 +33,7 @@ __all__ = [
     "Base",
     "Exercise",
     "ExerciseSet",
+    "ExerciseSlugAlias",
     "OAuthAccessToken",
     "OAuthAuthorizationCode",
     "OAuthClient",

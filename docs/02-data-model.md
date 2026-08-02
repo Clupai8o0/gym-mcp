@@ -285,3 +285,34 @@ create table oauth_refresh_tokens (
 - SQLAlchemy models round-trip (insert/select) for every table in a test against a Neon
   branch (or local Postgres) — see `12-conventions.md` for the test harness.
 - No table references application logic; this phase is schema only.
+
+
+## Corrections (Phase 11L)
+
+The write path was only half built: everything could be created, nothing could be taken back.
+Migration `0007_corrections` adds the storage for the other half. All of it is additive and
+nullable, so it is a metadata-only change and every existing row means what it always meant.
+
+| Column / table | Where | Why |
+|---|---|---|
+| `deleted_at` | `workout_sessions`, `exercise_sets`, `exercises`, `personal_records_history` | Soft delete. `NULL` = live. Excluded from every read; `restore` clears it. |
+| `client_key` | `workout_sessions`, `exercise_sets`, `personal_records_history` | Caller-chosen idempotency key, unique per user. A retry returns the original row. |
+| `counted` | `personal_records_history` | Did this entry set a record? Keeps history monotonic — see below. |
+| `is_backfill` | `exercise_sets` | Entered after the fact. Counts toward volume; excluded from PR detection. |
+| `exercise_slug_aliases` | new table | A slug an exercise used to have, still resolvable after a rename. |
+
+**`personal_records` deliberately has no `deleted_at`.** It is fully derived by the recompute, and
+a soft-deleted row would still occupy its `(user_id, exercise_id, pr_type)` unique slot — the next
+recalculation would find a row it must neither update nor duplicate. Deleting a record is
+expressed as withdrawing the hand-entered claim behind it and recalculating, which is also the
+only reading of "I never set that" the log can actually support.
+
+**Why `counted` exists.** `auto` history rows are output: they are written only when a set sets a
+record, so they always count. `manual` rows are *input* — the claim has to stay in the table so a
+later replay can use it as a floor, but a claim that never beat the running best at its own moment
+must not appear in the chronology, or history stops being monotonic. Marking it rather than
+rejecting it is what lets it count again later, when the set that outranked it is deleted.
+
+The invariant all of this exists to hold, checked by `services/integrity.verify`: **for every
+(exercise, metric), the counted chronology strictly increases and its last value is the standing
+record.**

@@ -22,6 +22,17 @@ class PrCreate(BaseModel):
     achieved_at: datetime
     session_id: uuid.UUID | None = None
     notes: str | None = None
+    #: Idempotency key: a repeat with the same key returns the original record.
+    client_key: str | None = Field(default=None, max_length=200)
+
+
+class PrUpdate(BaseModel):
+    """Correct a hand-entered record in place. Only supplied fields change."""
+
+    value: float | None = Field(default=None, gt=0)
+    achieved_at: datetime | None = None
+    notes: str | None = None
+    clear_notes: bool = False
 
 
 class PrOut(BaseModel):
@@ -68,6 +79,12 @@ class PrListOut(BaseModel):
     items: list[PrOut]
 
 
+class PrDeleteOut(BaseModel):
+    """What is standing after a record was withdrawn — ``null`` if nothing supports one."""
+
+    standing: PrOut | None
+
+
 class PrHistoryItem(BaseModel):
     """One entry in a record's chronology, auto or manual.
 
@@ -86,11 +103,17 @@ class PrHistoryItem(BaseModel):
     set_id: uuid.UUID | None
     session_id: uuid.UUID | None
     notes: str | None
+    #: Did this entry set a record? Always true for ``auto``; a hand-entered claim that never beat
+    #: the record standing at its moment is kept as an input but is not part of the chronology.
+    counted: bool
+    deleted_at: datetime | None
 
     @classmethod
     def from_row(cls, row: PersonalRecordHistory) -> PrHistoryItem:
         return cls(
             id=row.id,
+            counted=row.counted,
+            deleted_at=row.deleted_at,
             pr_type=row.pr_type,
             value=float(row.value),
             unit=row.unit,

@@ -243,6 +243,7 @@ async def test_log_set_shape_matches_rest_sibling(
         "is_pr",
         "pr_type",
         "notes",
+        "is_backfill",
         "created_at",
     }
     assert logged["pr"]["is_pr"] is True and logged["pr"]["pr_type"] == "weight"
@@ -253,11 +254,14 @@ async def test_log_pr_then_rest_reads_it(
 ) -> None:
     """``log_pr`` writes a manual record the REST surface sees identically."""
     with bound(db_session, seeded["user_id"]):
+        # Dated *after* the session, which is the realistic shape: you train, then enter the
+        # estimate. A claim dated *during* the session would outrank its sets at their own
+        # moment, and those sets would correctly stop being records.
         created = await server.log_pr(
             exercise="bench-press",
             pr_type="weight",
             value=120.0,
-            achieved_at=_PERFORMED_AT,
+            achieved_at=_NOW,
             notes="estimated 1RM",
         )
     assert created["source"] == "manual"

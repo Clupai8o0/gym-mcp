@@ -65,6 +65,44 @@ REST surface plus catalog search, so chat and UI have parity.
 | `get_volume_summary` | `analytics.volume` | Sets/reps/tonnage by exercise for a range |
 | `get_session_frequency` | `analytics.frequency` | Sessions per ISO week |
 
+### Corrections (Phase 11L) — the other half of the write path
+
+Tempo was append-only in practice: every write was permanent, so a bug that wrote
+`duration_minutes = 136070` or a stray history row could never be taken back. These tools make
+removal a correction rather than a second irreversible act. **Every delete is soft** — the row
+leaves all reads and `restore` brings it back; `purge_deleted` is the only path that frees the
+storage, and it must be asked for explicitly.
+
+| Tool | Service | Notes |
+|---|---|---|
+| `log_sets` | `sets.log_sets` | Many sets into one session, one transaction |
+| `log_session_with_sets` | `sessions.create` + `sets.log_sets` | A whole workout, one transaction |
+| `update_set` | `sets.update_set` | Recalculates that exercise's records |
+| `delete_set` | `sets.delete_set` | Soft; the record falls back to next best |
+| `delete_session` | `sessions.delete` | `cascade`; refuses with a count otherwise |
+| `update_custom_exercise` | `exercises.update_custom` | Rename keeps the old slug as an alias |
+| `delete_custom_exercise` | `exercises.delete_custom` | `reassign_to` or it refuses — never orphan sets |
+| `update_pr` | `prs.update_pr` | Hand-entered records only |
+| `delete_pr` | `prs.delete_pr` | Withdraws the claim; next best becomes current |
+| `delete_pr_history_entry` | `prs.delete_history_entry` | Removes one chronology entry |
+| `recalculate_prs` | `integrity.recalculate` | Rebuilds records from ground truth |
+| `verify_pr_integrity` | `integrity.verify` | Read-only; the CI/post-migration assertion |
+| `restore` | `corrections.restore` | Undo for any soft delete |
+| `purge_deleted` | `corrections.purge` | Irreversible; ≥1 day window |
+
+Three conventions run through all of them:
+
+- **`client_key`** on `log_session`, `log_set`, `log_sets` and `log_pr` makes a retry idempotent.
+  A repeat with the same key returns the original record — the failure that once left two
+  identical `upper_hypertrophy` sessions dated 1 May.
+- **`dry_run`** on destructive and bulk calls reports what would change and changes nothing.
+- **`clear_notes`** rather than a nullable `notes`: in a partial update `null` already means
+  "leave alone", so emptying a field needs its own word.
+
+Records are **derived state**, and the tools say so instead of pretending otherwise: `update_pr`
+and `delete_pr` refuse an auto-detected record and point at the set behind it, because the next
+recalculation would undo any edit made here.
+
 ### Tool template
 
 ```python

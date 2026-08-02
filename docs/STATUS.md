@@ -1180,3 +1180,80 @@ Not required for Phase 0. Track here so they don't become surprise blockers:
   — a stronger fixture, since a test that stubs the provider now exercises the keying it feeds.
   Behind that failure sat a `style_version == "1"` assertion that had silently rotted through two
   style bumps; it now asserts against `prompt.STYLE_VERSION`. **267 passed, 0 failed.**
+
+## Phase 11L — Corrections: update, delete, restore, and PR integrity — DONE
+- **Branch/PR:** `phase-11e-desktop-home`
+- **The problem, in the reporter's words:** *"a data migration exposed that Tempo is append-only
+  in practice: every write is permanent."* Three cases proved it — `finish_session` had written
+  `duration_minutes = 136070` with no way to correct the stored value, a bogus 60 kg
+  `personal_records_history` row sat under `barbell-squat` with no way to remove it, and a typo in
+  a custom exercise's name would have been permanent. Correction tooling was the missing half.
+
+- **Migration `0007_corrections`** — additive and nullable throughout, so metadata-only on
+  Postgres with no rewrite and no backfill: `deleted_at` on sessions/sets/exercises/PR-history,
+  `client_key` (partial-unique per user) on the three tables writes land in,
+  `exercise_sets.is_backfill`, `personal_records_history.counted`, and `exercise_slug_aliases`.
+  - **`personal_records` deliberately has no `deleted_at`.** It is fully derived, and a
+    soft-deleted row would still occupy its `(user, exercise, pr_type)` unique slot — the next
+    recalculation would find a row it must neither update nor duplicate. Deleting a record is
+    expressed as withdrawing the hand-entered claim behind it and recalculating, which is also the
+    only reading of "I never set that" the log can support. Recorded as a deliberate deviation
+    from the letter of the request.
+
+- **`services/integrity`** — `recalculate(exercise?, pr_type?, dry_run?)` rebuilds
+  `personal_records` + `personal_records_history` from ground truth (live non-backfill sets, plus
+  live hand-entered claims), and `verify(exercise?)` is a read-only check of the invariant: **for
+  every (exercise, metric) the counted chronology strictly increases and its last value is the
+  standing record.** Four problem kinds are reported by name. Every update and delete calls
+  `recalculate` for what it touched; exposing it directly is what repairs data a since-fixed bug
+  already broke, since nothing recomputes an exercise nobody touches.
+
+- **The replay is now one rule for both sources.** Manual claims were previously seeded as an
+  unconditional floor and `_sync_records` carried a special case protecting them. Now a claim is
+  judged exactly as a set is — beat the record standing **at your own moment** — and whichever
+  entry produced the final running best becomes the record, carrying its own source.
+  `_sync_records` lost the special case entirely.
+  - **`counted` is what makes that safe.** `auto` rows are output and always count; `manual` rows
+    are *input*, so a claim that never beat the running best has to stay in the table (as a floor
+    that can apply again if the set outranking it is deleted) while leaving the chronology.
+    Without it, history cannot promise monotonicity under arbitrary edits.
+  - **Contract change:** `log_pr` now **refuses** a claim below the standing record, naming the
+    value it lost to and pointing at `update_pr`. Previously it was accepted unconditionally,
+    which is precisely how a chronology reading `120, 90` was produced. Backdating is unaffected —
+    a claim dated January is judged against January.
+
+- **The two reported detection bugs.** A `weight_kg` of 0 is bodyweight/assisted work, not a load
+  of zero: it no longer registers a weight PR of 0.0, and those movements are judged on reps or
+  hold instead. A set flagged `is_backfill` is excluded from detection entirely — a placeholder
+  `reps=1` used to become a reps record of 1 — while still counting toward volume and frequency.
+
+- **14 new MCP tools, each with a REST twin** (17 → **33**; lockstep is a guardrail, not a
+  preference): `log_sets`, `log_session_with_sets`, `update_set`, `delete_set`, `delete_session`,
+  `update_custom_exercise`, `delete_custom_exercise`, `update_pr`, `delete_pr`,
+  `delete_pr_history_entry`, `recalculate_prs`, `verify_pr_integrity`, `restore`,
+  `purge_deleted`. `openapi.json` **30 → 38 paths**.
+  - Deletes that would orphan something refuse and say *how many*: a session with sets needs
+    `cascade`, a custom exercise with sets needs `reassign_to` (which moves them, then recomputes
+    **both** movements). A catalog exercise refuses edit/delete with an explanation rather than a
+    misleading 404 — the caller can see it, they just cannot change shared reference data.
+  - `client_key` idempotency on `log_session`/`log_set`/`log_sets`/`log_pr`; `dry_run` on the
+    destructive and bulk calls; `clear_notes` because `null` already means "leave alone".
+  - Renaming a custom exercise regenerates its slug and keeps the old one resolvable as an alias.
+
+- **DoD evidence:**
+  - **296 passed, 0 failed** (was 270 → **+26**), ruff + black + `mypy --strict` (141 files) clean;
+    architecture guard and MCP↔REST contract suites unaffected. `alembic check` → no drift; the
+    migration up/downgrades cleanly. Web `next build`, `eslint .`, `tsc --noEmit` clean.
+  - **The nine named acceptance tests all present and passing**, plus integrity assertions on
+    every one — including the reported repro written straight into the tables the way the old bug
+    left it, proving the repair path works on data that is *already* wrong.
+  - **Driven live over HTTP** against a seeded local stack: the 60 kg set after a 100 kg manual PR
+    returns `is_pr=False, previous_best=100.0`; a 0 kg set yields no weight PR; a backfilled
+    `reps=1` yields none at all; the same `client_key` twice returns one session; a 3-set bulk
+    write lands transactionally with a verdict each; deleting the 120 kg set drops the record to
+    115 and restoring it puts 120 back; editing it to 105 leaves history `[100 manual, 110, 115]`;
+    `cascade=false` refuses with *"This session has 3 sets"*; and `verify-prs` reports
+    `ok: true, problems: []` across all 6 exercises after the churn.
+- **Notes:** `openapi-typescript` now runs with `--default-non-nullable false` — it was marking
+  request-body fields that merely have a *default* as required, which is right for a response and
+  wrong for a request.

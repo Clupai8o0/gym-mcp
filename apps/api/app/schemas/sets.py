@@ -26,6 +26,8 @@ class SetOut(ORMModel):
     is_pr: bool
     pr_type: str | None
     notes: str | None
+    #: Entered after the fact rather than measured. Counts toward volume; excluded from PRs.
+    is_backfill: bool
     created_at: datetime
 
 
@@ -67,6 +69,18 @@ class SetCreate(BaseModel):
     hold_seconds: int | None = Field(default=None, ge=0)
     rpe: float | None = Field(default=None, ge=1, le=10)
     notes: str | None = None
+    is_backfill: bool = False
+    client_key: str | None = Field(default=None, max_length=200)
+
+
+class SetBulkCreate(BaseModel):
+    """Log many sets into one session as a single transaction (all or nothing)."""
+
+    sets: list[SetCreate] = Field(min_length=1, max_length=200)
+
+
+class LoggedSetsOut(BaseModel):
+    items: list[LoggedSetOut]
 
 
 class SetUpdate(BaseModel):

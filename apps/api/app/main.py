@@ -18,6 +18,7 @@ from app.api.deps import CLIENT_HEADER
 from app.api.routers import (
     analytics,
     connections,
+    corrections,
     exercises,
     health,
     me,
@@ -50,6 +51,7 @@ _ROUTERS = (
     skills,
     analytics,
     connections,
+    corrections,
     auth_routes,
     oauth_metadata,
     oauth_register,

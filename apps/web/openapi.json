@@ -352,6 +352,127 @@
             }
           }
         }
+      },
+      "patch": {
+        "tags": [
+          "exercises"
+        ],
+        "summary": "Update Exercise",
+        "description": "Edit a **custom** exercise. Renaming regenerates the slug, keeping the old one as an alias.",
+        "operationId": "update_exercise_api_exercises__exercise_id__patch",
+        "parameters": [
+          {
+            "name": "exercise_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Exercise Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExerciseUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExerciseDetailOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "exercises"
+        ],
+        "summary": "Delete Exercise",
+        "description": "Soft-delete a custom exercise, refusing to orphan the sets that reference it.",
+        "operationId": "delete_exercise_api_exercises__exercise_id__delete",
+        "parameters": [
+          {
+            "name": "exercise_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Exercise Id"
+            }
+          },
+          {
+            "name": "reassign_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reassign To"
+            }
+          },
+          {
+            "name": "dry_run",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Dry Run"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExerciseDeleteOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/exercises/{exercise_id}/illustration": {
@@ -565,6 +686,48 @@
         }
       }
     },
+    "/api/sessions/with-sets": {
+      "post": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Create Session With Sets",
+        "description": "Create a session and its sets in one transaction — all or nothing.",
+        "operationId": "create_session_with_sets_api_sessions_with_sets_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionWithSetsCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionWithSetsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/sessions/{session_id}": {
       "get": {
         "tags": [
@@ -663,6 +826,7 @@
           "sessions"
         ],
         "summary": "Delete Session",
+        "description": "Soft-delete a session and (with `cascade`) its sets, recalculating every PR affected.",
         "operationId": "delete_session_api_sessions__session_id__delete",
         "parameters": [
           {
@@ -674,11 +838,38 @@
               "format": "uuid",
               "title": "Session Id"
             }
+          },
+          {
+            "name": "cascade",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Cascade"
+            }
+          },
+          {
+            "name": "dry_run",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Dry Run"
+            }
           }
         ],
         "responses": {
-          "204": {
-            "description": "Successful Response"
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionDeleteOut"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -720,6 +911,60 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SessionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{session_id}/sets/bulk": {
+      "post": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Log Sets",
+        "description": "Log many sets into one session transactionally, with a PR verdict for each.",
+        "operationId": "log_sets_api_sessions__session_id__sets_bulk_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetBulkCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoggedSetsOut"
                 }
               }
             }
@@ -847,6 +1092,7 @@
           "sets"
         ],
         "summary": "Delete Set",
+        "description": "Soft-delete a set and recompute its exercise's records.\n\nReturns the removed row rather than 204 so the caller has the id to `restore` with, and can\nsee it really was this set. The record it may have held falls back to the next best.",
         "operationId": "delete_set_api_sets__set_id__delete",
         "parameters": [
           {
@@ -861,8 +1107,15 @@
           }
         ],
         "responses": {
-          "204": {
-            "description": "Successful Response"
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetOut"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -967,6 +1220,146 @@
         }
       }
     },
+    "/api/prs/{pr_id}": {
+      "patch": {
+        "tags": [
+          "prs"
+        ],
+        "summary": "Update Pr",
+        "description": "Correct a hand-entered record in place, without the delete-and-reinsert dance.",
+        "operationId": "update_pr_api_prs__pr_id__patch",
+        "parameters": [
+          {
+            "name": "pr_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Pr Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "prs"
+        ],
+        "summary": "Delete Pr",
+        "description": "Withdraw a hand-entered record; the next best becomes current rather than leaving a gap.",
+        "operationId": "delete_pr_api_prs__pr_id__delete",
+        "parameters": [
+          {
+            "name": "pr_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Pr Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrDeleteOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/prs/history/{entry_id}": {
+      "delete": {
+        "tags": [
+          "prs"
+        ],
+        "summary": "Delete Pr History Entry",
+        "description": "Remove one chronology entry, then rebuild the record from what is left.",
+        "operationId": "delete_pr_history_entry_api_prs_history__entry_id__delete",
+        "parameters": [
+          {
+            "name": "entry_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Entry Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrHistoryItem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/prs/history": {
       "get": {
         "tags": [
@@ -992,6 +1385,26 @@
             "schema": {
               "type": "string",
               "title": "Pr Type"
+            }
+          },
+          {
+            "name": "include_deleted",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Deleted"
+            }
+          },
+          {
+            "name": "include_uncounted",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Uncounted"
             }
           }
         ],
@@ -1295,6 +1708,218 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RevokeConnectionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/corrections/recalculate-prs": {
+      "post": {
+        "tags": [
+          "corrections"
+        ],
+        "summary": "Recalculate Prs",
+        "description": "Rebuild personal records and their chronology from the live sets + hand-entered claims.",
+        "operationId": "recalculate_prs_api_corrections_recalculate_prs_post",
+        "parameters": [
+          {
+            "name": "exercise_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Exercise Id"
+            }
+          },
+          {
+            "name": "pr_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pr Type"
+            }
+          },
+          {
+            "name": "dry_run",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Dry Run"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecalculationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/corrections/verify-prs": {
+      "get": {
+        "tags": [
+          "corrections"
+        ],
+        "summary": "Verify Prs",
+        "description": "Read-only: report any exercise whose record tables disagree with themselves.",
+        "operationId": "verify_prs_api_corrections_verify_prs_get",
+        "parameters": [
+          {
+            "name": "exercise_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Exercise Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrityOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/corrections/restore": {
+      "post": {
+        "tags": [
+          "corrections"
+        ],
+        "summary": "Restore",
+        "description": "Undo a soft delete and rebuild whatever records depended on the row being gone.",
+        "operationId": "restore_api_corrections_restore_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/corrections/purge": {
+      "post": {
+        "tags": [
+          "corrections"
+        ],
+        "summary": "Purge",
+        "description": "Hard-delete rows soft-deleted longer ago than ``older_than_days``. Irreversible.",
+        "operationId": "purge_api_corrections_purge_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurgeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurgeOut"
                 }
               }
             }
@@ -2134,6 +2759,40 @@
         "title": "ExerciseCreate",
         "description": "Create a custom exercise. ``slug`` is derived from ``name`` when omitted."
       },
+      "ExerciseDeleteOut": {
+        "properties": {
+          "exercise": {
+            "$ref": "#/components/schemas/ExerciseOut"
+          },
+          "set_count": {
+            "type": "integer",
+            "title": "Set Count"
+          },
+          "reassigned_to": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExerciseOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "dry_run": {
+            "type": "boolean",
+            "title": "Dry Run"
+          }
+        },
+        "type": "object",
+        "required": [
+          "exercise",
+          "set_count",
+          "reassigned_to",
+          "dry_run"
+        ],
+        "title": "ExerciseDeleteOut",
+        "description": "What a custom-exercise delete did — or, with ``dry_run``, would have done."
+      },
       "ExerciseDetailOut": {
         "properties": {
           "id": {
@@ -2481,6 +3140,123 @@
         "title": "ExerciseSetGroup",
         "description": "One exercise and its sets within a session detail."
       },
+      "ExerciseUpdate": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "force": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Force"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "mechanic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mechanic"
+          },
+          "equipment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Equipment"
+          },
+          "primary_muscles": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Muscles"
+          },
+          "secondary_muscles": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secondary Muscles"
+          },
+          "instructions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instructions"
+          }
+        },
+        "type": "object",
+        "title": "ExerciseUpdate",
+        "description": "Patch a **custom** exercise; only supplied fields change.\n\nNo ``slug``: it is derived from ``name``, so the two cannot drift. Renaming keeps the old slug\nresolvable as an alias."
+      },
       "FrequencyItem": {
         "properties": {
           "week_start": {
@@ -2534,6 +3310,66 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "IntegrityOut": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "checked_exercises": {
+            "type": "integer",
+            "title": "Checked Exercises"
+          },
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/IntegrityProblemOut"
+            },
+            "type": "array",
+            "title": "Problems"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok",
+          "checked_exercises",
+          "problems"
+        ],
+        "title": "IntegrityOut"
+      },
+      "IntegrityProblemOut": {
+        "properties": {
+          "exercise_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Exercise Id"
+          },
+          "exercise_name": {
+            "type": "string",
+            "title": "Exercise Name"
+          },
+          "pr_type": {
+            "type": "string",
+            "title": "Pr Type"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "exercise_id",
+          "exercise_name",
+          "pr_type",
+          "kind",
+          "detail"
+        ],
+        "title": "IntegrityProblemOut"
+      },
       "LoggedSetOut": {
         "properties": {
           "set": {
@@ -2549,6 +3385,22 @@
           "pr"
         ],
         "title": "LoggedSetOut"
+      },
+      "LoggedSetsOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LoggedSetOut"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "LoggedSetsOut"
       },
       "MeOut": {
         "properties": {
@@ -2635,6 +3487,65 @@
         "title": "MeUpdate",
         "description": "Patch the current user's display preferences (Settings → units, docs/07)."
       },
+      "MetricResultOut": {
+        "properties": {
+          "exercise_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Exercise Id"
+          },
+          "exercise_name": {
+            "type": "string",
+            "title": "Exercise Name"
+          },
+          "pr_type": {
+            "type": "string",
+            "title": "Pr Type"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "entries": {
+            "type": "integer",
+            "title": "Entries"
+          },
+          "changed": {
+            "type": "boolean",
+            "title": "Changed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "exercise_id",
+          "exercise_name",
+          "pr_type",
+          "value",
+          "source",
+          "entries",
+          "changed"
+        ],
+        "title": "MetricResultOut",
+        "description": "What a rebuild produced for one (exercise, metric)."
+      },
       "PrCreate": {
         "properties": {
           "exercise_id": {
@@ -2677,6 +3588,18 @@
               }
             ],
             "title": "Notes"
+          },
+          "client_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Key"
           }
         },
         "type": "object",
@@ -2688,6 +3611,26 @@
         ],
         "title": "PrCreate",
         "description": "A hand-entered record. ``unit`` is not a field — it follows from ``pr_type``."
+      },
+      "PrDeleteOut": {
+        "properties": {
+          "standing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PrOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "standing"
+        ],
+        "title": "PrDeleteOut",
+        "description": "What is standing after a record was withdrawn — ``null`` if nothing supports one."
       },
       "PrHistoryItem": {
         "properties": {
@@ -2751,6 +3694,22 @@
               }
             ],
             "title": "Notes"
+          },
+          "counted": {
+            "type": "boolean",
+            "title": "Counted"
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
           }
         },
         "type": "object",
@@ -2763,7 +3722,9 @@
           "source",
           "set_id",
           "session_id",
-          "notes"
+          "notes",
+          "counted",
+          "deleted_at"
         ],
         "title": "PrHistoryItem",
         "description": "One entry in a record's chronology, auto or manual.\n\nThis replaces the ``SetOut`` this endpoint used to return. A manual record has no set behind\nit, so a set-shaped payload could not represent one — which is precisely why manual entries\nwere missing from PR history before."
@@ -2965,6 +3926,53 @@
         ],
         "title": "PrOut"
       },
+      "PrUpdate": {
+        "properties": {
+          "value": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "achieved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Achieved At"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "clear_notes": {
+            "type": "boolean",
+            "title": "Clear Notes",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "PrUpdate",
+        "description": "Correct a hand-entered record in place. Only supplied fields change."
+      },
       "ProtectedResourceMetadata": {
         "properties": {
           "resource": {
@@ -3002,6 +4010,133 @@
         ],
         "title": "ProtectedResourceMetadata",
         "description": "RFC 9728 PRM (``/.well-known/oauth-protected-resource``)."
+      },
+      "PurgeIn": {
+        "properties": {
+          "older_than_days": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Older Than Days"
+          },
+          "dry_run": {
+            "type": "boolean",
+            "title": "Dry Run",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "older_than_days"
+        ],
+        "title": "PurgeIn"
+      },
+      "PurgeOut": {
+        "properties": {
+          "older_than_days": {
+            "type": "integer",
+            "title": "Older Than Days"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Counts"
+          },
+          "dry_run": {
+            "type": "boolean",
+            "title": "Dry Run"
+          }
+        },
+        "type": "object",
+        "required": [
+          "older_than_days",
+          "total",
+          "counts",
+          "dry_run"
+        ],
+        "title": "PurgeOut"
+      },
+      "RecalculationOut": {
+        "properties": {
+          "exercises": {
+            "type": "integer",
+            "title": "Exercises"
+          },
+          "changed": {
+            "items": {
+              "$ref": "#/components/schemas/MetricResultOut"
+            },
+            "type": "array",
+            "title": "Changed"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/MetricResultOut"
+            },
+            "type": "array",
+            "title": "Metrics"
+          },
+          "dry_run": {
+            "type": "boolean",
+            "title": "Dry Run",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "exercises",
+          "changed",
+          "metrics"
+        ],
+        "title": "RecalculationOut"
+      },
+      "RestoreIn": {
+        "properties": {
+          "entity_type": {
+            "type": "string",
+            "title": "Entity Type"
+          },
+          "entity_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Entity Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "entity_type",
+          "entity_id"
+        ],
+        "title": "RestoreIn"
+      },
+      "RestoreOut": {
+        "properties": {
+          "entity_type": {
+            "type": "string",
+            "title": "Entity Type"
+          },
+          "entity_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Entity Id"
+          },
+          "exercises_recalculated": {
+            "type": "integer",
+            "title": "Exercises Recalculated"
+          }
+        },
+        "type": "object",
+        "required": [
+          "entity_type",
+          "entity_id",
+          "exercises_recalculated"
+        ],
+        "title": "RestoreOut"
       },
       "RevokeConnectionOut": {
         "properties": {
@@ -3080,6 +4215,18 @@
               }
             ],
             "title": "Duration Minutes"
+          },
+          "client_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Key"
           }
         },
         "type": "object",
@@ -3087,6 +4234,34 @@
           "performed_at"
         ],
         "title": "SessionCreate"
+      },
+      "SessionDeleteOut": {
+        "properties": {
+          "session": {
+            "$ref": "#/components/schemas/SessionOut"
+          },
+          "set_count": {
+            "type": "integer",
+            "title": "Set Count"
+          },
+          "exercises_recalculated": {
+            "type": "integer",
+            "title": "Exercises Recalculated"
+          },
+          "dry_run": {
+            "type": "boolean",
+            "title": "Dry Run"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session",
+          "set_count",
+          "exercises_recalculated",
+          "dry_run"
+        ],
+        "title": "SessionDeleteOut",
+        "description": "What a delete did — or, with ``dry_run``, would have done."
       },
       "SessionDetailOut": {
         "properties": {
@@ -3316,6 +4491,18 @@
             ],
             "title": "Performed At"
           },
+          "ended_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
           "title": {
             "anyOf": [
               {
@@ -3362,11 +4549,139 @@
               }
             ],
             "title": "Duration Minutes"
+          },
+          "clear_notes": {
+            "type": "boolean",
+            "title": "Clear Notes",
+            "default": false
           }
         },
         "type": "object",
         "title": "SessionUpdate",
-        "description": "Patch session metadata; only supplied fields change."
+        "description": "Patch session metadata; only supplied fields change.\n\n``clear_notes`` rather than a nullable ``notes``: in a partial update ``null`` already means\n\"leave alone\", so emptying a field needs its own word."
+      },
+      "SessionWithSetsCreate": {
+        "properties": {
+          "performed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Performed At"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "duration_minutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Minutes"
+          },
+          "client_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Key"
+          },
+          "sets": {
+            "items": {
+              "$ref": "#/components/schemas/SetCreate"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Sets"
+          }
+        },
+        "type": "object",
+        "required": [
+          "performed_at",
+          "sets"
+        ],
+        "title": "SessionWithSetsCreate",
+        "description": "Create a session and its sets in one transaction (all or nothing)."
+      },
+      "SessionWithSetsOut": {
+        "properties": {
+          "session": {
+            "$ref": "#/components/schemas/SessionOut"
+          },
+          "sets": {
+            "items": {
+              "$ref": "#/components/schemas/LoggedSetOut"
+            },
+            "type": "array",
+            "title": "Sets"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session",
+          "sets"
+        ],
+        "title": "SessionWithSetsOut"
+      },
+      "SetBulkCreate": {
+        "properties": {
+          "sets": {
+            "items": {
+              "$ref": "#/components/schemas/SetCreate"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Sets"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sets"
+        ],
+        "title": "SetBulkCreate",
+        "description": "Log many sets into one session as a single transaction (all or nothing)."
       },
       "SetCreate": {
         "properties": {
@@ -3439,6 +4754,23 @@
               }
             ],
             "title": "Notes"
+          },
+          "is_backfill": {
+            "type": "boolean",
+            "title": "Is Backfill",
+            "default": false
+          },
+          "client_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Key"
           }
         },
         "type": "object",
@@ -3540,6 +4872,10 @@
             ],
             "title": "Notes"
           },
+          "is_backfill": {
+            "type": "boolean",
+            "title": "Is Backfill"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -3559,6 +4895,7 @@
           "is_pr",
           "pr_type",
           "notes",
+          "is_backfill",
           "created_at"
         ],
         "title": "SetOut"

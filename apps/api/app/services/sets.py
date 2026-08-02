@@ -47,7 +47,7 @@ from sqlalchemy import delete as sa_delete
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core import errors
+from app.core import clock, errors
 from app.models import (
     Exercise,
     ExerciseSet,
@@ -135,9 +135,16 @@ def _require_measurement(
 
 @dataclass
 class _RecordState:
+    """The record standing for one metric at the end of the replay, and what produced it."""
+
     value: Decimal
     achieved_at: Any
-    session_id: uuid.UUID
+    session_id: uuid.UUID | None
+    #: ``auto`` when a logged set produced it, ``manual`` when a hand-entered claim did. The
+    #: record carries the source of the entry that actually set it — not of whatever happened to
+    #: be there before.
+    source: str = "auto"
+    notes: str | None = None
 
 
 @dataclass(frozen=True)
@@ -149,6 +156,17 @@ class _HistoryEntry:
     achieved_at: Any
     set_id: uuid.UUID
     session_id: uuid.UUID
+
+
+def _loaded(weight: Decimal | None) -> bool:
+    """Whether a set carries an actual external load.
+
+    ``weight_kg = 0`` is how bodyweight and assisted work are recorded, and it used to register
+    as a weight PR of **0.0** — a record nobody set, on a movement that progresses on reps. Zero
+    and NULL are the same statement here ("no load"), so both are excluded from weight PRs and
+    from the first-log collapse; those exercises are judged on reps or hold time instead.
+    """
+    return weight is not None and weight > 0
 
 
 def _evaluate(
@@ -171,7 +189,8 @@ def _evaluate(
         if best_hold is None or hold_d > best_hold:
             return "hold_time", hold_d
 
-    if weight is not None and reps is not None:
+    if _loaded(weight) and reps is not None:
+        assert weight is not None  # narrowed by _loaded
         if best_weight is None or weight > best_weight:
             return "weight", weight
         reps_d = Decimal(reps)
@@ -179,7 +198,7 @@ def _evaluate(
             return "reps", reps_d
 
     if not any_record_yet:
-        first = weight if weight is not None else _first_int(reps, hold)
+        first = weight if _loaded(weight) else _first_int(reps, hold)
         if first is not None:
             return "first_log", first
 
@@ -199,7 +218,7 @@ def _concrete_metric(
 ) -> str:
     if pr_type != "first_log":
         return pr_type
-    if weight is not None:
+    if _loaded(weight):
         return "weight"
     if reps is not None:
         return "reps"
@@ -215,7 +234,7 @@ def _contested_metric(weight: Decimal | None, reps: int | None, hold: int | None
     """
     if hold is not None:
         return "hold_time"
-    if weight is not None:
+    if _loaded(weight):
         return "weight"
     if reps is not None:
         return "reps"
@@ -240,6 +259,9 @@ async def _load_manual_marks(
                     PersonalRecordHistory.user_id == user_id,
                     PersonalRecordHistory.exercise_id == exercise_id,
                     PersonalRecordHistory.source == "manual",
+                    # A deleted manual entry is a claim withdrawn: it stops being a floor, which
+                    # is exactly how `delete_pr_history_entry` removes a bogus record.
+                    PersonalRecordHistory.deleted_at.is_(None),
                 )
                 .order_by(PersonalRecordHistory.achieved_at, PersonalRecordHistory.created_at)
             )
@@ -280,7 +302,20 @@ async def _recompute(
         await db.execute(
             select(ExerciseSet, WorkoutSession.performed_at)
             .join(WorkoutSession, ExerciseSet.session_id == WorkoutSession.id)
-            .where(ExerciseSet.user_id == user_id, ExerciseSet.exercise_id == exercise_id)
+            .where(
+                ExerciseSet.user_id == user_id,
+                ExerciseSet.exercise_id == exercise_id,
+                # Ground truth is the *live* data. A deleted set — or one whose whole session was
+                # deleted — stops counting the moment it is removed, which is what makes "delete
+                # the set that set the record" fall back to the next best rather than leaving a
+                # record pointing at a value that no longer exists.
+                ExerciseSet.deleted_at.is_(None),
+                WorkoutSession.deleted_at.is_(None),
+                # Backfilled data is training that happened, so it counts toward volume and
+                # frequency — but it was not measured, and a placeholder `reps=1` used to register
+                # as a reps PR of 1. It is excluded from detection, not from the log.
+                ExerciseSet.is_backfill.is_(False),
+            )
             .order_by(
                 WorkoutSession.performed_at,
                 ExerciseSet.created_at,
@@ -321,7 +356,25 @@ async def _recompute(
 
     for moment, kind, mark, row in timeline:
         if kind == 0 and mark is not None:
+            # A hand-entered claim is judged by the same rule as a set: it counts only if it
+            # strictly beats the record standing at its own moment. A claim that doesn't is kept
+            # (the row stays, so deleting whatever outranked it can bring it back) but marked
+            # `counted = False`, which is what keeps the chronology monotonic under arbitrary
+            # edits. Without the flag the only options are to drop the claim — losing the floor —
+            # or to show it, which puts a step *down* in a history that promises to only rise.
+            standing = best[mark.pr_type]
+            if standing is not None and mark.value <= standing:
+                mark.counted = False
+                continue
+            mark.counted = True
             best[mark.pr_type] = mark.value
+            records[mark.pr_type] = _RecordState(
+                value=mark.value,
+                achieved_at=mark.achieved_at,
+                session_id=mark.session_id,
+                source="manual",
+                notes=mark.notes,
+            )
             any_record_yet = True
             continue
 
@@ -360,7 +413,10 @@ async def _recompute(
 
         best[metric] = new_value
         records[metric] = _RecordState(
-            value=new_value, achieved_at=performed_at, session_id=exercise_set.session_id
+            value=new_value,
+            achieved_at=performed_at,
+            session_id=exercise_set.session_id,
+            source="auto",
         )
         any_record_yet = True
 
@@ -392,33 +448,27 @@ async def _sync_records(
     records: Mapping[str, _RecordState],
     existing: Mapping[str, PersonalRecord],
 ) -> None:
+    """Write the replay's verdict into ``personal_records``, one row per metric.
+
+    This used to carry a special case protecting ``manual`` records from being overwritten or
+    deleted, because the replay only knew about sets and would otherwise have erased a
+    hand-entered record on the next write. It no longer needs one: the replay walks manual claims
+    and logged sets in a single timeline and hands back whichever produced the final running best,
+    with its source attached. The record is simply what the replay says it is.
+
+    That is also what makes withdrawing a claim work. Under the old special case, deleting the
+    history entry behind a manual record left the record itself standing — protected by a `source`
+    that nothing could now justify.
+    """
     for metric in _METRICS:
         state = records.get(metric)
         current = existing.get(metric)
-
-        # A manual record is the user's own statement about their training. The recompute is
-        # authoritative over records it produced, but here it has to earn the overwrite: only a
-        # logged set that *strictly beats* the stated value replaces it, and nothing deletes it.
-        # (A record with no supporting set is exactly what manual entry is for — an estimated 1RM,
-        # a hold timed outside a session, a PR carried over from another app.)
-        #
-        # `_recompute` now seeds the replay from this same value, so anything reaching `state` has
-        # already cleared it. The comparison stays as the backstop that keeps this invariant true
-        # locally rather than only by agreement with a caller forty lines away.
-        if current is not None and current.source == "manual":
-            if state is not None and state.value > current.value:
-                current.value = state.value
-                current.unit = _UNIT_BY_METRIC[metric]
-                current.achieved_at = state.achieved_at
-                current.session_id = state.session_id
-                current.notes = None
-                current.source = "auto"
-            continue
 
         if state is None:
             if current is not None:
                 await db.delete(current)
             continue
+
         if current is None:
             db.add(
                 PersonalRecord(
@@ -429,7 +479,8 @@ async def _sync_records(
                     unit=_UNIT_BY_METRIC[metric],
                     achieved_at=state.achieved_at,
                     session_id=state.session_id,
-                    source="auto",
+                    notes=state.notes,
+                    source=state.source,
                 )
             )
         else:
@@ -437,7 +488,8 @@ async def _sync_records(
             current.unit = _UNIT_BY_METRIC[metric]
             current.achieved_at = state.achieved_at
             current.session_id = state.session_id
-            current.source = "auto"
+            current.notes = state.notes
+            current.source = state.source
 
 
 async def _sync_auto_history(
@@ -481,6 +533,140 @@ async def _sync_auto_history(
         )
 
 
+async def recompute(
+    db: AsyncSession, *, user_id: uuid.UUID, exercise_id: uuid.UUID
+) -> dict[uuid.UUID, PrOutcome]:
+    """Re-derive one exercise's records from ground truth. The repair path's only primitive.
+
+    Public wrapper over :func:`_recompute`, for ``services/integrity`` and for every correction
+    that changes what the sets say — a deleted session, a moved date, a withdrawn claim. Keeping
+    one implementation is the reason log, edit, delete and repair cannot drift apart.
+    """
+    return await _recompute(db, user_id, exercise_id)
+
+
+def require_pr_type_for_report(pr_type: str) -> str:
+    """Validate a metric name for callers that only *report* on one (``recalculate_prs``)."""
+    if pr_type not in _METRICS:
+        raise errors.validation(
+            f"pr_type must be one of {', '.join(_METRICS)}", pr_type=pr_type, valid=list(_METRICS)
+        )
+    return pr_type
+
+
+async def running_best_at(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    exercise_id: uuid.UUID,
+    pr_type: str,
+    moment: Any,
+    ignore_history_id: uuid.UUID | None = None,
+) -> Decimal | None:
+    """The record standing for one metric **at** ``moment``, or ``None``.
+
+    Answers "would a claim of X dated then actually be a record?" without writing anything, which
+    is how ``log_pr`` can reject a claim that loses instead of storing one that never counts.
+    ``ignore_history_id`` excludes a row from the comparison so ``update_pr`` can re-judge an entry
+    against everything *except itself*.
+    """
+    require_pr_type_for_report(pr_type)
+
+    rows = (
+        await db.execute(
+            select(ExerciseSet, WorkoutSession.performed_at)
+            .join(WorkoutSession, ExerciseSet.session_id == WorkoutSession.id)
+            .where(
+                ExerciseSet.user_id == user_id,
+                ExerciseSet.exercise_id == exercise_id,
+                ExerciseSet.deleted_at.is_(None),
+                WorkoutSession.deleted_at.is_(None),
+                ExerciseSet.is_backfill.is_(False),
+                WorkoutSession.performed_at <= moment,
+            )
+            .order_by(WorkoutSession.performed_at, ExerciseSet.created_at, ExerciseSet.id)
+        )
+    ).all()
+
+    marks = [
+        mark
+        for mark in await _load_manual_marks(db, user_id, exercise_id)
+        if mark.achieved_at <= moment and mark.id != ignore_history_id
+    ]
+
+    best: dict[str, Decimal | None] = {"weight": None, "reps": None, "hold_time": None}
+    any_record_yet = False
+    timeline: list[tuple[Any, int, PersonalRecordHistory | None, ExerciseSet | None]] = [
+        (mark.achieved_at, 0, mark, None) for mark in marks
+    ]
+    timeline += [(performed_at, 1, None, row) for row, performed_at in rows]
+    timeline.sort(key=lambda entry: (entry[0], entry[1]))
+
+    for _at, kind, mark, row in timeline:
+        if kind == 0 and mark is not None:
+            standing = best[mark.pr_type]
+            if standing is None or mark.value > standing:
+                best[mark.pr_type] = mark.value
+                any_record_yet = True
+            continue
+        if row is None:  # unreachable; narrowing only
+            continue
+        verdict = _evaluate(
+            row.weight_kg,
+            row.reps,
+            row.hold_seconds,
+            best_weight=best["weight"],
+            best_reps=best["reps"],
+            best_hold=best["hold_time"],
+            any_record_yet=any_record_yet,
+        )
+        if verdict is None:
+            continue
+        pr_type_hit, new_value = verdict
+        best[_concrete_metric(pr_type_hit, row.weight_kg, row.reps, row.hold_seconds)] = new_value
+        any_record_yet = True
+
+    return best[pr_type]
+
+
+@dataclass(frozen=True)
+class SetDraft:
+    """One set in a batch write, before it has been given a session or an exercise id."""
+
+    exercise_id: uuid.UUID
+    set_number: int
+    weight_kg: float | None = None
+    reps: int | None = None
+    hold_seconds: int | None = None
+    rpe: float | None = None
+    notes: str | None = None
+    is_backfill: bool = False
+    client_key: str | None = None
+
+
+async def _existing_by_client_key(
+    db: AsyncSession, user_id: uuid.UUID, client_key: str | None
+) -> ExerciseSet | None:
+    """The set a previous call with this key already created, if any."""
+    if client_key is None:
+        return None
+    return (
+        await db.execute(
+            select(ExerciseSet).where(
+                ExerciseSet.user_id == user_id, ExerciseSet.client_key == client_key
+            )
+        )
+    ).scalar_one_or_none()
+
+
+async def _verdict_for(
+    db: AsyncSession, user_id: uuid.UUID, exercise_set: ExerciseSet
+) -> PrOutcome:
+    """This set's standing PR verdict, recomputed. Used to answer an idempotent replay honestly."""
+    outcomes = await _recompute(db, user_id, exercise_set.exercise_id)
+    return outcomes.get(exercise_set.id, PrOutcome(False, None, None, None))
+
+
 async def log_set(
     db: AsyncSession,
     *,
@@ -493,8 +679,18 @@ async def log_set(
     hold_seconds: int | None = None,
     rpe: float | None = None,
     notes: str | None = None,
+    is_backfill: bool = False,
+    client_key: str | None = None,
 ) -> LoggedSet:
-    """Insert a set, auto-detect + upsert PRs, and return the set with its PR verdict."""
+    """Insert a set, auto-detect + upsert PRs, and return the set with its PR verdict.
+
+    ``client_key`` makes the call idempotent: a retry that never saw the first response returns the
+    original set and its current verdict rather than logging the same set twice.
+    """
+    replay = await _existing_by_client_key(db, user_id, client_key)
+    if replay is not None:
+        return LoggedSet(set=replay, pr=await _verdict_for(db, user_id, replay))
+
     await _assert_session_owned(db, user_id, session_id)
     await _assert_exercise_visible(db, user_id, exercise_id)
 
@@ -511,13 +707,109 @@ async def log_set(
         hold_seconds=hold_seconds,
         rpe=_to_decimal(rpe),
         notes=notes,
+        is_backfill=is_backfill,
+        client_key=client_key,
     )
     db.add(exercise_set)
     await db.flush()
 
     outcomes = await _recompute(db, user_id, exercise_id)
     await db.refresh(exercise_set)
-    return LoggedSet(set=exercise_set, pr=outcomes[exercise_set.id])
+    # `.get` with a default rather than `[...]`: a backfilled set is excluded from detection, so
+    # the replay never sees it and it has no verdict of its own. "Not a PR" is the honest answer.
+    return LoggedSet(
+        set=exercise_set, pr=outcomes.get(exercise_set.id, PrOutcome(False, None, None, None))
+    )
+
+
+async def log_sets(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    session_id: uuid.UUID,
+    drafts: Sequence[SetDraft],
+) -> list[LoggedSet]:
+    """Insert many sets into one session as a single unit, with a verdict for each.
+
+    All or nothing: the caller's transaction covers the whole batch, so a draft that fails
+    validation aborts every set in the call rather than leaving a half-written session. That is the
+    point — a migration of 62 sets at one call each has 62 chances to end up half-applied.
+
+    PRs are recomputed **once per exercise at the end**, not once per set. The recompute is a full
+    chronological replay, so running it per row would be quadratic for no benefit; the verdicts it
+    returns describe the same final state either way.
+    """
+    if not drafts:
+        raise errors.validation("sets must not be empty")
+    await _assert_session_owned(db, user_id, session_id)
+
+    created: list[tuple[SetDraft, ExerciseSet]] = []
+    replayed: dict[int, ExerciseSet] = {}
+    touched: set[uuid.UUID] = set()
+
+    for index, draft in enumerate(drafts):
+        replay = await _existing_by_client_key(db, user_id, draft.client_key)
+        if replay is not None:
+            replayed[index] = replay
+            touched.add(replay.exercise_id)
+            continue
+
+        await _assert_exercise_visible(db, user_id, draft.exercise_id)
+        weight_d = _to_decimal(draft.weight_kg)
+        try:
+            _require_measurement(weight_d, draft.reps, draft.hold_seconds)
+        except errors.ServiceError as exc:
+            # Say *which* one, or a 62-set batch reports "a set needs a measurement" and the
+            # caller has to bisect to find out where.
+            raise errors.validation(f"sets[{index}]: {exc.message}") from exc
+
+        exercise_set = ExerciseSet(
+            user_id=user_id,
+            session_id=session_id,
+            exercise_id=draft.exercise_id,
+            set_number=draft.set_number,
+            weight_kg=weight_d,
+            reps=draft.reps,
+            hold_seconds=draft.hold_seconds,
+            rpe=_to_decimal(draft.rpe),
+            notes=draft.notes,
+            is_backfill=draft.is_backfill,
+            client_key=draft.client_key,
+        )
+        db.add(exercise_set)
+        created.append((draft, exercise_set))
+        touched.add(draft.exercise_id)
+
+    await db.flush()
+
+    outcomes: dict[uuid.UUID, PrOutcome] = {}
+    for exercise_id in sorted(touched):
+        outcomes.update(await _recompute(db, user_id, exercise_id))
+
+    results: list[LoggedSet] = []
+    order = iter(created)
+    for index in range(len(drafts)):
+        if index in replayed:
+            row = replayed[index]
+        else:
+            _draft, row = next(order)
+        await db.refresh(row)
+        results.append(
+            LoggedSet(set=row, pr=outcomes.get(row.id, PrOutcome(False, None, None, None)))
+        )
+    return results
+
+
+async def get_set(db: AsyncSession, *, user_id: uuid.UUID, set_id: uuid.UUID) -> ExerciseSet:
+    """One set the user owns, deleted or not. Raises ``not_found`` otherwise."""
+    exercise_set = (
+        await db.execute(
+            select(ExerciseSet).where(ExerciseSet.id == set_id, ExerciseSet.user_id == user_id)
+        )
+    ).scalar_one_or_none()
+    if exercise_set is None:
+        raise errors.not_found("Set not found")
+    return exercise_set
 
 
 async def update_set(
@@ -527,14 +819,12 @@ async def update_set(
     set_id: uuid.UUID,
     changes: Mapping[str, Any],
 ) -> LoggedSet:
-    """Edit a set's metrics and recompute PRs for its exercise."""
-    exercise_set = (
-        await db.execute(
-            select(ExerciseSet).where(ExerciseSet.id == set_id, ExerciseSet.user_id == user_id)
-        )
-    ).scalar_one_or_none()
-    if exercise_set is None:
-        raise errors.not_found("Set not found")
+    """Edit a set's metrics and recompute PRs for its exercise.
+
+    The recompute is not optional bookkeeping: editing the set that set a record would otherwise
+    leave ``personal_records`` pointing at a value that no longer exists anywhere in the log.
+    """
+    exercise_set = await get_set(db, user_id=user_id, set_id=set_id)
 
     for key, value in changes.items():
         if key not in _UPDATABLE:
@@ -548,38 +838,41 @@ async def update_set(
 
     outcomes = await _recompute(db, user_id, exercise_set.exercise_id)
     await db.refresh(exercise_set)
-    return LoggedSet(set=exercise_set, pr=outcomes[exercise_set.id])
+    return LoggedSet(
+        set=exercise_set, pr=outcomes.get(exercise_set.id, PrOutcome(False, None, None, None))
+    )
 
 
-async def delete_set(db: AsyncSession, *, user_id: uuid.UUID, set_id: uuid.UUID) -> None:
-    """Delete a set and recompute PRs for its exercise."""
-    exercise_set = (
-        await db.execute(
-            select(ExerciseSet).where(ExerciseSet.id == set_id, ExerciseSet.user_id == user_id)
-        )
-    ).scalar_one_or_none()
-    if exercise_set is None:
-        raise errors.not_found("Set not found")
+async def delete_set(
+    db: AsyncSession, *, user_id: uuid.UUID, set_id: uuid.UUID, at: Any = None
+) -> ExerciseSet:
+    """Soft-delete a set and recompute PRs for its exercise.
 
-    exercise_id = exercise_set.exercise_id
-    await db.execute(sa_delete(ExerciseSet).where(ExerciseSet.id == set_id))
-    await db.flush()
-    await _recompute(db, user_id, exercise_id)
+    Soft, so it can be restored, and so the record that referenced it falls back to the next best
+    rather than to nothing. The recompute simply stops seeing the row.
+    """
+    exercise_set = await get_set(db, user_id=user_id, set_id=set_id)
+    if exercise_set.deleted_at is None:
+        exercise_set.deleted_at = at or clock.now()
+        await db.flush()
+        await _recompute(db, user_id, exercise_set.exercise_id)
+    return exercise_set
 
 
 async def list_session_sets(
-    db: AsyncSession, *, user_id: uuid.UUID, session_id: uuid.UUID
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    session_id: uuid.UUID,
+    include_deleted: bool = False,
 ) -> Sequence[ExerciseSet]:
     """All sets for a session, ordered by exercise then set number (ownership-checked)."""
     await _assert_session_owned(db, user_id, session_id)
+    stmt = select(ExerciseSet).where(ExerciseSet.session_id == session_id)
+    if not include_deleted:
+        stmt = stmt.where(ExerciseSet.deleted_at.is_(None))
     return (
-        (
-            await db.execute(
-                select(ExerciseSet)
-                .where(ExerciseSet.session_id == session_id)
-                .order_by(ExerciseSet.exercise_id, ExerciseSet.set_number)
-            )
-        )
+        (await db.execute(stmt.order_by(ExerciseSet.exercise_id, ExerciseSet.set_number)))
         .scalars()
         .all()
     )

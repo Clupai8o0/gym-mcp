@@ -59,17 +59,26 @@ async def test_full_session_and_set_lifecycle(
     patched = await app_client.patch(f"/api/sets/{second_set_id}", json={"weight_kg": 90})
     assert patched.status_code == 200
 
-    # Delete it.
+    # Delete it. Delete is soft now, and returns the row it removed rather than 204 — the caller
+    # needs that id to `restore` with, and can see it really was this set.
     deleted = await app_client.delete(f"/api/sets/{second_set_id}")
-    assert deleted.status_code == 204
+    assert deleted.status_code == 200 and deleted.json()["id"] == second_set_id
 
     # Update + delete the session.
     upd = await app_client.patch(f"/api/sessions/{session_id}", json={"title": "Upper — Power"})
     assert upd.status_code == 200 and upd.json()["title"] == "Upper — Power"
 
     gone = await app_client.delete(f"/api/sessions/{session_id}")
-    assert gone.status_code == 204
+    assert gone.status_code == 200
+    assert gone.json()["exercises_recalculated"] >= 1
     assert (await app_client.get(f"/api/sessions/{session_id}")).status_code == 404
+
+    # …and it can be brought back, which is the whole reason the delete is soft.
+    restored = await app_client.post(
+        "/api/corrections/restore", json={"entity_type": "session", "entity_id": session_id}
+    )
+    assert restored.status_code == 200
+    assert (await app_client.get(f"/api/sessions/{session_id}")).status_code == 200
 
 
 async def test_list_sessions_paginates(app_client: AsyncClient) -> None:

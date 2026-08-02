@@ -502,8 +502,16 @@ class TestVerdictSeesManualRecords:
         assert logged.pr.previous_best is None
         assert logged.set.is_pr is True
 
-    async def test_a_later_manual_pr_still_wins_outright(self, db_session: AsyncSession) -> None:
-        """Seeding must not turn `log_pr` into a competition — an explicit correction still wins."""
+    async def test_a_claim_below_the_standing_record_is_refused(
+        self, db_session: AsyncSession
+    ) -> None:
+        """`log_pr` states an achievement; it is not how you lower a record.
+
+        This used to be accepted unconditionally — "an explicit correction wins" — and it is what
+        made history non-monotonic: 120 then 90 is not a chronology of records. The rule is now
+        the same one sets are held to (beat what was standing at your moment), and the error
+        points at the tool that *does* correct things.
+        """
         user, exercise, session = await _fixture(db_session)
         await sets.log_set(
             db_session,
@@ -515,20 +523,55 @@ class TestVerdictSeesManualRecords:
             reps=3,
         )
 
+        with pytest.raises(ServiceError) as caught:
+            await prs.log_manual_pr(
+                db_session,
+                user_id=user.id,
+                exercise_id=exercise.id,
+                pr_type="weight",
+                value=90,
+                achieved_at=_ACHIEVED,
+                notes="the 120 was mis-entered",
+            )
+        assert caught.value.kind is ErrorKind.VALIDATION
+        assert "does not beat" in caught.value.message
+        assert "update_pr" in caught.value.message
+
+        # …and the standing record is untouched by the refusal.
+        listed = await prs.list_prs(db_session, user_id=user.id)
+        weight = next(row.pr for row in listed if row.pr.pr_type == "weight")
+        assert weight.value == 120 and weight.source == "auto"
+
+    async def test_a_backdated_claim_is_judged_against_its_own_moment(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Beating "what was standing" means *then*, not now — backfilling history still works."""
+        user, exercise, session = await _fixture(db_session)
+        await sets.log_set(
+            db_session,
+            user_id=user.id,
+            session_id=session.id,
+            exercise_id=exercise.id,
+            set_number=1,
+            weight_kg=120,
+            reps=3,
+        )
+
+        # Dated well before the session: at that moment nothing was standing, so it counts —
+        # even though it is below today's record.
         await prs.log_manual_pr(
             db_session,
             user_id=user.id,
             exercise_id=exercise.id,
             pr_type="weight",
             value=90,
-            achieved_at=_ACHIEVED,
-            notes="corrected — the 120 was mis-entered",
+            achieved_at=_ACHIEVED - timedelta(days=30),
         )
 
-        listed = await prs.list_prs(db_session, user_id=user.id)
-        weight = next(row.pr for row in listed if row.pr.pr_type == "weight")
-        assert weight.value == 90
-        assert weight.source == "manual"
+        history = await prs.history(
+            db_session, user_id=user.id, exercise_id=exercise.id, pr_type="weight"
+        )
+        assert [(float(r.value), r.source) for r in history] == [(90.0, "manual"), (120.0, "auto")]
 
     async def test_hold_pr_unaffected_by_a_manual_weight_record(
         self, db_session: AsyncSession

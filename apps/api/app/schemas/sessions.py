@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from app.schemas.common import ORMModel, PageMeta
 from app.schemas.exercises import ExerciseOut
-from app.schemas.sets import SetOut
+from app.schemas.sets import LoggedSetOut, SetCreate, SetOut
 
 if TYPE_CHECKING:
     from app.services.sessions import SessionDetail
@@ -90,13 +90,41 @@ class SessionCreate(BaseModel):
     type: str | None = Field(default=None, max_length=50)
     notes: str | None = None
     duration_minutes: int | None = Field(default=None, ge=0)
+    #: Idempotency key: a repeat with the same key returns the original session.
+    client_key: str | None = Field(default=None, max_length=200)
+
+
+class SessionWithSetsCreate(SessionCreate):
+    """Create a session and its sets in one transaction (all or nothing)."""
+
+    sets: list[SetCreate] = Field(min_length=1, max_length=200)
+
+
+class SessionWithSetsOut(BaseModel):
+    session: SessionOut
+    sets: list[LoggedSetOut]
 
 
 class SessionUpdate(BaseModel):
-    """Patch session metadata; only supplied fields change."""
+    """Patch session metadata; only supplied fields change.
+
+    ``clear_notes`` rather than a nullable ``notes``: in a partial update ``null`` already means
+    "leave alone", so emptying a field needs its own word.
+    """
 
     performed_at: datetime | None = None
+    ended_at: datetime | None = None
     title: str | None = Field(default=None, max_length=200)
     type: str | None = Field(default=None, max_length=50)
     notes: str | None = None
     duration_minutes: int | None = Field(default=None, ge=0)
+    clear_notes: bool = False
+
+
+class SessionDeleteOut(BaseModel):
+    """What a delete did — or, with ``dry_run``, would have done."""
+
+    session: SessionOut
+    set_count: int
+    exercises_recalculated: int
+    dry_run: bool

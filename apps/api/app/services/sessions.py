@@ -30,7 +30,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,7 +37,7 @@ from app.core import clock, errors
 from app.models import Exercise, ExerciseSet, WorkoutSession
 
 # Fields a PATCH may change (values are already Pydantic-validated by the router).
-_UPDATABLE = frozenset({"title", "type", "notes", "duration_minutes", "performed_at"})
+_UPDATABLE = frozenset({"title", "type", "notes", "duration_minutes", "performed_at", "ended_at"})
 
 # How long a session may sit untouched before a read considers it abandoned (D31). Chosen so
 # it can never fire mid-workout (no session runs 12 h) but a forgotten one can't survive a
@@ -76,14 +75,19 @@ class ActiveSession:
     set_count: int
 
 
-async def _owned(db: AsyncSession, user_id: uuid.UUID, session_id: uuid.UUID) -> WorkoutSession:
-    session = (
-        await db.execute(
-            select(WorkoutSession).where(
-                WorkoutSession.id == session_id, WorkoutSession.user_id == user_id
-            )
-        )
-    ).scalar_one_or_none()
+async def _owned(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    session_id: uuid.UUID,
+    *,
+    include_deleted: bool = False,
+) -> WorkoutSession:
+    stmt = select(WorkoutSession).where(
+        WorkoutSession.id == session_id, WorkoutSession.user_id == user_id
+    )
+    if not include_deleted:
+        stmt = stmt.where(WorkoutSession.deleted_at.is_(None))
+    session = (await db.execute(stmt)).scalar_one_or_none()
     if session is None:
         raise errors.not_found("Session not found")
     return session
@@ -120,8 +124,25 @@ async def create(
     type: str | None = None,
     notes: str | None = None,
     duration_minutes: int | None = None,
+    client_key: str | None = None,
     now: datetime | None = None,
 ) -> WorkoutSession:
+    """Record a session. ``client_key`` makes a retry return the original instead of a duplicate.
+
+    Which is not hypothetical: a retried call that never saw its response left two identical
+    `upper_hypertrophy` sessions dated 1 May, and nothing could tell them apart afterwards.
+    """
+    if client_key is not None:
+        replay = (
+            await db.execute(
+                select(WorkoutSession).where(
+                    WorkoutSession.user_id == user_id, WorkoutSession.client_key == client_key
+                )
+            )
+        ).scalar_one_or_none()
+        if replay is not None:
+            return replay
+
     started = clock.as_utc(performed_at)
     session = WorkoutSession(
         user_id=user_id,
@@ -131,6 +152,7 @@ async def create(
         notes=notes,
         duration_minutes=duration_minutes,
         ended_at=_closes_immediately(started, duration_minutes, at=now or clock.now()),
+        client_key=client_key,
     )
     db.add(session)
     await db.flush()
@@ -147,8 +169,11 @@ async def list_sessions(
     date_to: datetime | None = None,
     limit: int = 50,
     offset: int = 0,
+    include_deleted: bool = False,
 ) -> tuple[Sequence[WorkoutSession], int]:
     base = select(WorkoutSession).where(WorkoutSession.user_id == user_id)
+    if not include_deleted:
+        base = base.where(WorkoutSession.deleted_at.is_(None))
     if type:
         base = base.where(WorkoutSession.type == type)
     if date_from:
@@ -179,7 +204,10 @@ async def get(db: AsyncSession, *, user_id: uuid.UUID, session_id: uuid.UUID) ->
         (
             await db.execute(
                 select(ExerciseSet)
-                .where(ExerciseSet.session_id == session_id)
+                .where(
+                    ExerciseSet.session_id == session_id,
+                    ExerciseSet.deleted_at.is_(None),
+                )
                 .order_by(ExerciseSet.exercise_id, ExerciseSet.set_number)
             )
         )
@@ -206,21 +234,40 @@ async def update(
     user_id: uuid.UUID,
     session_id: uuid.UUID,
     changes: Mapping[str, Any],
+    clear_notes: bool = False,
 ) -> WorkoutSession:
     """Patch session metadata. Only the supplied keys change.
 
+    ``clear_notes`` exists because ``None`` already means "leave alone" in a partial update, and
+    overloading it would make "remove the note" unsayable. Same reasoning would apply to any other
+    nullable field that grows a need to be emptied.
+
     Correcting ``performed_at`` or ``duration_minutes`` on a **finished** session also moves its
     ``ended_at``, so the row stays internally consistent — fixing a mistyped duration should not
-    leave an end time that contradicts it. A session still in progress keeps its null ``ended_at``:
-    it ends when it ends.
+    leave an end time that contradicts it. Passing ``ended_at`` explicitly wins over that
+    derivation: the caller is stating the end, not asking for one. A session still in progress
+    keeps its null ``ended_at``: it ends when it ends.
+
+    Moving ``performed_at`` also moves any hand-entered record pinned to this session, and
+    recomputes the records for every exercise it touched — a session's date is *when its sets
+    happened*, so changing it reorders the chronology those records are derived from.
     """
     session = await _owned(db, user_id, session_id)
     for key, value in changes.items():
         if key not in _UPDATABLE:
             raise errors.validation(f"Field '{key}' is not updatable")
-        setattr(session, key, clock.as_utc(value) if key == "performed_at" and value else value)
+        if key in ("performed_at", "ended_at") and value is not None:
+            value = clock.as_utc(value)
+        setattr(session, key, value)
+    if clear_notes:
+        session.notes = None
 
-    if session.ended_at is not None and {"performed_at", "duration_minutes"} & set(changes):
+    stated_end = changes.get("ended_at") is not None
+    if (
+        not stated_end
+        and session.ended_at is not None
+        and {"performed_at", "duration_minutes"} & set(changes)
+    ):
         session.ended_at = (
             session.performed_at + timedelta(minutes=session.duration_minutes)
             if session.duration_minutes is not None
@@ -228,15 +275,110 @@ async def update(
         )
 
     await db.flush()
+
+    if "performed_at" in changes:
+        # Imported here rather than at module scope: `integrity` imports `sets`, which is a
+        # sibling service, and a top-level import would make sessions↔sets↔integrity circular.
+        from app.services import integrity
+
+        await integrity.cascade_achieved_at(db, user_id=user_id, session_id=session_id)
+        for exercise_id in await integrity.exercises_touched_by_session(
+            db, user_id=user_id, session_id=session_id
+        ):
+            await _recompute_exercise(db, user_id, exercise_id)
+
     await db.refresh(session)
     return session
 
 
-async def delete(db: AsyncSession, *, user_id: uuid.UUID, session_id: uuid.UUID) -> None:
-    """Delete a session (its sets cascade via the FK). Idempotent per ownership check."""
-    await _owned(db, user_id, session_id)
-    await db.execute(sa_delete(WorkoutSession).where(WorkoutSession.id == session_id))
+async def _recompute_exercise(db: AsyncSession, user_id: uuid.UUID, exercise_id: uuid.UUID) -> None:
+    from app.services import sets as sets_service
+
+    await sets_service.recompute(db, user_id=user_id, exercise_id=exercise_id)
+
+
+@dataclass(frozen=True)
+class SessionDeletion:
+    """What a delete did (or, under ``dry_run``, would do)."""
+
+    session: WorkoutSession
+    set_count: int
+    exercises_recalculated: int
+    dry_run: bool
+
+
+async def delete(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    session_id: uuid.UUID,
+    cascade: bool = True,
+    dry_run: bool = False,
+    at: datetime | None = None,
+) -> SessionDeletion:
+    """Soft-delete a session and, with ``cascade``, its sets — then recalculate every PR affected.
+
+    Refusing without ``cascade`` when sets exist is not pedantry: a session and its sets are one
+    workout, and removing the header while leaving the rows would leave sets that still count
+    toward records and volume but belong to a workout that no longer happened. The refusal says
+    how many, so the caller can decide with the number in front of them.
+    """
+    session = await _owned(db, user_id, session_id)
+    from app.services import integrity
+
+    exercise_ids = await integrity.exercises_touched_by_session(
+        db, user_id=user_id, session_id=session_id
+    )
+    live_sets = (
+        await db.execute(
+            select(func.count()).where(
+                ExerciseSet.session_id == session_id, ExerciseSet.deleted_at.is_(None)
+            )
+        )
+    ).scalar_one()
+
+    if live_sets and not cascade:
+        raise errors.validation(
+            f"This session has {live_sets} set{'s' if live_sets != 1 else ''}. Pass cascade=true "
+            f"to delete them with it, or delete them individually first.",
+            session_id=str(session_id),
+            set_count=live_sets,
+        )
+
+    if dry_run:
+        return SessionDeletion(
+            session=session,
+            set_count=live_sets,
+            exercises_recalculated=len(exercise_ids),
+            dry_run=True,
+        )
+
+    stamp = at or clock.now()
+    session.deleted_at = stamp
+    if cascade:
+        for row in (
+            (
+                await db.execute(
+                    select(ExerciseSet).where(
+                        ExerciseSet.session_id == session_id, ExerciseSet.deleted_at.is_(None)
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        ):
+            row.deleted_at = stamp
     await db.flush()
+
+    for exercise_id in exercise_ids:
+        await _recompute_exercise(db, user_id, exercise_id)
+
+    return SessionDeletion(
+        session=session,
+        set_count=live_sets,
+        exercises_recalculated=len(exercise_ids),
+        dry_run=False,
+    )
 
 
 # ── Lifecycle ────────────────────────────────────────────────────────────────────────
@@ -262,7 +404,7 @@ async def _activity(db: AsyncSession, session: WorkoutSession) -> tuple[datetime
     newest, count = (
         await db.execute(
             select(func.max(ExerciseSet.created_at), func.count()).where(
-                ExerciseSet.session_id == session.id
+                ExerciseSet.session_id == session.id, ExerciseSet.deleted_at.is_(None)
             )
         )
     ).one()
@@ -324,7 +466,11 @@ async def get_active_session(
         (
             await db.execute(
                 select(WorkoutSession)
-                .where(WorkoutSession.user_id == user_id, WorkoutSession.ended_at.is_(None))
+                .where(
+                    WorkoutSession.user_id == user_id,
+                    WorkoutSession.ended_at.is_(None),
+                    WorkoutSession.deleted_at.is_(None),
+                )
                 .order_by(WorkoutSession.performed_at.desc())
             )
         )
