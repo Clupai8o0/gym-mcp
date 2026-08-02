@@ -35,12 +35,72 @@ async def test_prs_list_and_history(app_client: AsyncClient, db_session: AsyncSe
     assert items[0]["illustration_status"] == "pending"
     assert items[0]["illustration_url"] is None
     assert items[0]["is_custom"] is False
+    assert items[0]["source"] == "auto"
 
     history = await app_client.get(
         "/api/prs/history", params={"exercise_id": str(exercise.id), "pr_type": "weight"}
     )
     assert history.status_code == 200
-    assert [s["weight_kg"] for s in history.json()["items"]] == [100.0, 110.0]
+    entries = history.json()["items"]
+    assert [e["value"] for e in entries] == [100.0, 110.0]
+    assert [e["source"] for e in entries] == ["auto", "auto"]
+
+
+async def test_log_pr_endpoint_records_and_reads_back(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """``POST /api/prs`` — the REST twin of the MCP ``log_pr`` tool."""
+    exercise = await make_global_exercise(db_session, slug="squat", name="Squat")
+
+    created = await app_client.post(
+        "/api/prs",
+        json={
+            "exercise_id": str(exercise.id),
+            "pr_type": "weight",
+            "value": 140.0,
+            "achieved_at": _PERFORMED_AT,
+            "notes": "estimated from 5x120",
+        },
+    )
+    assert created.status_code == 201
+    body = created.json()
+    assert body["value"] == 140.0
+    assert body["unit"] == "kg"
+    assert body["source"] == "manual"
+    assert body["exercise_name"] == "Squat"
+
+    listed = await app_client.get("/api/prs", params={"exercise_id": str(exercise.id)})
+    assert [i["source"] for i in listed.json()["items"]] == ["manual"]
+
+    history = await app_client.get(
+        "/api/prs/history", params={"exercise_id": str(exercise.id), "pr_type": "weight"}
+    )
+    assert [e["source"] for e in history.json()["items"]] == ["manual"]
+
+
+async def test_log_pr_endpoint_rejects_bad_input(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    exercise = await make_global_exercise(db_session, slug="ohp", name="Overhead Press")
+    base = {"exercise_id": str(exercise.id), "achieved_at": _PERFORMED_AT}
+
+    negative = await app_client.post("/api/prs", json={**base, "pr_type": "weight", "value": -5})
+    assert negative.status_code == 422
+
+    bad_type = await app_client.post("/api/prs", json={**base, "pr_type": "tonnage", "value": 10})
+    assert bad_type.status_code == 422
+    assert "weight" in bad_type.json()["error"]["message"]
+
+    future = await app_client.post(
+        "/api/prs",
+        json={
+            "exercise_id": str(exercise.id),
+            "pr_type": "weight",
+            "value": 10,
+            "achieved_at": "2099-01-01T00:00:00Z",
+        },
+    )
+    assert future.status_code == 422
 
 
 async def test_analytics_volume_and_frequency(

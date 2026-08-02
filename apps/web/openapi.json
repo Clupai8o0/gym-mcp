@@ -699,7 +699,7 @@
           "sessions"
         ],
         "summary": "Finish Session",
-        "description": "Close a session and store its duration. Idempotent \u2014 finishing a finished one is a no-op.",
+        "description": "Close a session and store its duration. Idempotent — finishing a finished one is a no-op.",
         "operationId": "finish_session_api_sessions__session_id__finish_post",
         "parameters": [
           {
@@ -910,6 +910,46 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PrListOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "prs"
+        ],
+        "summary": "Log Pr",
+        "description": "Record a PR by hand — the REST twin of the MCP ``log_pr`` tool.\n\nFor records a logged set cannot express: an estimated 1RM, a hold timed outside a session, or\na PR migrated from another app. Overwrites whatever is stored for this exercise + metric.",
+        "operationId": "log_pr_api_prs_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrOut"
                 }
               }
             }
@@ -1739,7 +1779,7 @@
           "session"
         ],
         "title": "ActiveSessionOut",
-        "description": "The user's in-progress session, or ``null`` when they aren't training.\n\nWrapped rather than returned bare so \"no active session\" is an ordinary 200 with a\ntyped, nullable field \u2014 clients poll this on every screen and a 404 would be noise."
+        "description": "The user's in-progress session, or ``null`` when they aren't training.\n\nWrapped rather than returned bare so \"no active session\" is an ordinary 200 with a\ntyped, nullable field — clients poll this on every screen and a 404 would be noise."
       },
       "AuthorizationServerMetadata": {
         "properties": {
@@ -2588,7 +2628,140 @@
           "unit_pref"
         ],
         "title": "MeUpdate",
-        "description": "Patch the current user's display preferences (Settings \u2192 units, docs/07)."
+        "description": "Patch the current user's display preferences (Settings → units, docs/07)."
+      },
+      "PrCreate": {
+        "properties": {
+          "exercise_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Exercise Id"
+          },
+          "pr_type": {
+            "type": "string",
+            "title": "Pr Type"
+          },
+          "value": {
+            "type": "number",
+            "title": "Value"
+          },
+          "achieved_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Achieved At"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "exercise_id",
+          "pr_type",
+          "value",
+          "achieved_at"
+        ],
+        "title": "PrCreate",
+        "description": "A hand-entered record. ``unit`` is not a field — it follows from ``pr_type``."
+      },
+      "PrHistoryItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "pr_type": {
+            "type": "string",
+            "title": "Pr Type"
+          },
+          "value": {
+            "type": "number",
+            "title": "Value"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          },
+          "achieved_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Achieved At"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "set_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Set Id"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "pr_type",
+          "value",
+          "unit",
+          "achieved_at",
+          "source",
+          "set_id",
+          "session_id",
+          "notes"
+        ],
+        "title": "PrHistoryItem",
+        "description": "One entry in a record's chronology, auto or manual.\n\nThis replaces the ``SetOut`` this endpoint used to return. A manual record has no set behind\nit, so a set-shaped payload could not represent one — which is precisely why manual entries\nwere missing from PR history before."
       },
       "PrHistoryOut": {
         "properties": {
@@ -2603,10 +2776,11 @@
           },
           "items": {
             "items": {
-              "$ref": "#/components/schemas/SetOut"
+              "$ref": "#/components/schemas/PrHistoryItem"
             },
             "type": "array",
-            "title": "Items"
+            "title": "Items",
+            "description": "Oldest first; manual and auto entries interleaved chronologically."
           }
         },
         "type": "object",
@@ -2743,6 +2917,10 @@
             ],
             "title": "Notes"
           },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
           "illustration_url": {
             "anyOf": [
               {
@@ -2775,6 +2953,7 @@
           "achieved_at",
           "session_id",
           "notes",
+          "source",
           "illustration_url",
           "illustration_status",
           "is_custom"

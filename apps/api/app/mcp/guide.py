@@ -47,11 +47,15 @@ from its last set.
 - **Library:** `search_exercises`, `get_exercise`, `create_custom_exercise`
 - **Logging:** `log_session`, `get_active_session`, `finish_session`, `list_sessions`,
   `get_session`, `get_session_sets`, `log_set`
-- **Records:** `get_prs`, `get_pr_history`
+- **Records:** `get_prs`, `get_pr_history`, `log_pr`
 - **Analytics:** `get_volume_summary`, `get_session_frequency`
 - **Skills (calisthenics tree):** `get_skill_overview`, `get_skill_detail`,
   `update_skill_progress`
 
 Set metrics are optional but you must supply at least one of `weight_kg`, `reps`, or
 `hold_seconds`. Weight PRs require both weight and reps on the set.
+
+`log_set` detects PRs from what was actually lifted. Use `log_pr` for a record that has no set
+behind it — an estimated 1RM, a hold timed outside a session, or a PR brought over from another
+app. A hand-entered record wins immediately; a later logged set only replaces it by beating it.
 """

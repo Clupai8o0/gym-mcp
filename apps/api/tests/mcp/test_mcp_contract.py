@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
+from app.core.errors import ErrorKind, ServiceError
 from app.mcp import server
 from app.services import sessions as sessions_service
 from app.services import sets as sets_service
@@ -239,6 +240,47 @@ async def test_log_set_shape_matches_rest_sibling(
         "created_at",
     }
     assert logged["pr"]["is_pr"] is True and logged["pr"]["pr_type"] == "weight"
+
+
+async def test_log_pr_then_rest_reads_it(
+    app_client: AsyncClient, db_session: AsyncSession, seeded: dict[str, Any]
+) -> None:
+    """``log_pr`` writes a manual record the REST surface sees identically."""
+    with bound(db_session, seeded["user_id"]):
+        created = await server.log_pr(
+            exercise="bench-press",
+            pr_type="weight",
+            value=120.0,
+            achieved_at=_PERFORMED_AT,
+            notes="estimated 1RM",
+        )
+    assert created["source"] == "manual"
+    assert created["value"] == 120.0 and created["unit"] == "kg"
+
+    rest = await _rest(app_client, "/api/prs", exercise_id=str(seeded["bench_id"]))
+    weight = next(i for i in rest["items"] if i["pr_type"] == "weight")
+    assert weight == created
+
+    # And it shows up in the chronology alongside the auto entries from the seeded sets.
+    history = await _rest(
+        app_client, "/api/prs/history", exercise_id=str(seeded["bench_id"]), pr_type="weight"
+    )
+    assert [i["source"] for i in history["items"]] == ["auto", "auto", "manual"]
+
+
+async def test_log_pr_unknown_exercise_is_a_clean_error(
+    db_session: AsyncSession, seeded: dict[str, Any]
+) -> None:
+    """An unresolvable name must surface as a domain error, never a 500."""
+    with bound(db_session, seeded["user_id"]), pytest.raises(ServiceError) as caught:
+        await server.log_pr(
+            exercise="kettlebell moonwalk",
+            pr_type="weight",
+            value=100.0,
+            achieved_at=_PERFORMED_AT,
+        )
+    assert caught.value.kind is ErrorKind.NOT_FOUND
+    assert caught.value.status_code == 404
 
 
 async def test_update_skill_progress_then_rest_reads_it(

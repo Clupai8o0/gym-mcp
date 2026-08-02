@@ -30,7 +30,13 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import errors
-from app.models import Exercise, ExerciseSet, PersonalRecord, WorkoutSession
+from app.models import (
+    Exercise,
+    ExerciseSet,
+    PersonalRecord,
+    PersonalRecordHistory,
+    WorkoutSession,
+)
 
 # Concrete record metrics and their stored units.
 _UNIT_BY_METRIC = {"weight": "kg", "reps": "reps", "hold_time": "s"}
@@ -116,6 +122,17 @@ class _RecordState:
     session_id: uuid.UUID
 
 
+@dataclass(frozen=True)
+class _HistoryEntry:
+    """One PR-setting set, on its way into ``personal_records_history``."""
+
+    metric: str
+    value: Decimal
+    achieved_at: Any
+    set_id: uuid.UUID
+    session_id: uuid.UUID
+
+
 def _evaluate(
     weight: Decimal | None,
     reps: int | None,
@@ -197,6 +214,8 @@ async def _recompute(
     records: dict[str, _RecordState] = {}
     any_record_yet = False
     outcomes: dict[uuid.UUID, PrOutcome] = {}
+    # The chronology, rebuilt alongside the flags so the two can never disagree.
+    chronology: list[_HistoryEntry] = []
 
     for exercise_set, performed_at in rows:
         weight = exercise_set.weight_kg
@@ -232,8 +251,18 @@ async def _recompute(
         exercise_set.is_pr = True
         exercise_set.pr_type = pr_type
         outcomes[exercise_set.id] = PrOutcome(True, pr_type, previous_best, new_value)
+        chronology.append(
+            _HistoryEntry(
+                metric=metric,
+                value=new_value,
+                achieved_at=performed_at,
+                set_id=exercise_set.id,
+                session_id=exercise_set.session_id,
+            )
+        )
 
     await _sync_records(db, user_id, exercise_id, records)
+    await _sync_auto_history(db, user_id, exercise_id, chronology)
     await db.flush()
     return outcomes
 
@@ -259,6 +288,22 @@ async def _sync_records(
     for metric in _METRICS:
         state = records.get(metric)
         current = existing.get(metric)
+
+        # A manual record is the user's own statement about their training. The recompute is
+        # authoritative over records it produced, but here it has to earn the overwrite: only a
+        # logged set that *strictly beats* the stated value replaces it, and nothing deletes it.
+        # (A record with no supporting set is exactly what manual entry is for — an estimated 1RM,
+        # a hold timed outside a session, a PR carried over from another app.)
+        if current is not None and current.source == "manual":
+            if state is not None and state.value > current.value:
+                current.value = state.value
+                current.unit = _UNIT_BY_METRIC[metric]
+                current.achieved_at = state.achieved_at
+                current.session_id = state.session_id
+                current.notes = None
+                current.source = "auto"
+            continue
+
         if state is None:
             if current is not None:
                 await db.delete(current)
@@ -273,6 +318,7 @@ async def _sync_records(
                     unit=_UNIT_BY_METRIC[metric],
                     achieved_at=state.achieved_at,
                     session_id=state.session_id,
+                    source="auto",
                 )
             )
         else:
@@ -280,6 +326,48 @@ async def _sync_records(
             current.unit = _UNIT_BY_METRIC[metric]
             current.achieved_at = state.achieved_at
             current.session_id = state.session_id
+            current.source = "auto"
+
+
+async def _sync_auto_history(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    exercise_id: uuid.UUID,
+    chronology: Sequence[_HistoryEntry],
+) -> None:
+    """Rebuild this exercise's ``auto`` history rows from the recomputed chronology.
+
+    Derived, not appended — which is the whole point. ``_recompute`` re-runs on every log, edit and
+    delete, so regenerating the auto rows wholesale is what keeps the chronology honest when a set
+    changes underneath it; appending would leave records of PRs that no longer exist.
+
+    ``manual`` rows are never in scope here. They are append-only and owned by
+    ``services/prs.log_manual_pr``.
+    """
+    await db.execute(
+        sa_delete(PersonalRecordHistory).where(
+            PersonalRecordHistory.user_id == user_id,
+            PersonalRecordHistory.exercise_id == exercise_id,
+            PersonalRecordHistory.source == "auto",
+        )
+    )
+    # The DELETE above targets rows the session may already hold; without this the pending INSERTs
+    # can reach Postgres before it and trip the (set_id, pr_type) unique index.
+    await db.flush()
+    for entry in chronology:
+        db.add(
+            PersonalRecordHistory(
+                user_id=user_id,
+                exercise_id=exercise_id,
+                pr_type=entry.metric,
+                value=entry.value,
+                unit=_UNIT_BY_METRIC[entry.metric],
+                achieved_at=entry.achieved_at,
+                source="auto",
+                set_id=entry.set_id,
+                session_id=entry.session_id,
+            )
+        )
 
 
 async def log_set(

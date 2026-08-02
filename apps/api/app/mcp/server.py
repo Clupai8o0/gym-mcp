@@ -26,7 +26,7 @@ from app.mcp.guide import GUIDE
 from app.mcp.runtime import WRITE_SCOPE
 from app.schemas.analytics import FrequencyItem, FrequencyOut, VolumeItem, VolumeOut
 from app.schemas.exercises import ExerciseDetailOut, ExerciseListOut, ExerciseOut
-from app.schemas.prs import PrHistoryOut, PrListOut, PrOut
+from app.schemas.prs import PrHistoryItem, PrHistoryOut, PrListOut, PrOut
 from app.schemas.sessions import ActiveSessionOut, SessionDetailOut, SessionListOut, SessionOut
 from app.schemas.sets import LoggedSetOut, SetOut
 from app.schemas.skills import (
@@ -277,8 +277,48 @@ async def get_prs(exercise: str | None = None) -> dict[str, Any]:
 
 
 @mcp.tool()
+async def log_pr(
+    exercise: str,
+    pr_type: str,
+    value: float,
+    achieved_at: datetime,
+    session_id: uuid.UUID | None = None,
+    notes: str | None = None,
+) -> dict[str, Any]:
+    """Record a personal record by hand. ``exercise`` is a UUID, slug, or name.
+
+    For records no logged set can express: an **estimated 1RM**, a **hold timed outside a
+    session**, or a PR **carried over from another app**. ``pr_type`` is weight|reps|hold_time;
+    ``value`` is kg for weight, a count for reps, seconds for hold_time.
+
+    Needs the write scope. This overwrites whatever is currently stored for the exercise + metric
+    — it is treated as the user correcting the record, so it wins on the spot. Auto-detection will
+    only replace it later if a logged set strictly beats it.
+    """
+    runtime.require_scope(WRITE_SCOPE)
+    async with runtime.open_session() as db:
+        user_id = runtime.current_user_id()
+        row = await exercises.resolve_ref(db, user_id=user_id, ref=exercise)
+        record = await prs.log_manual_pr(
+            db,
+            user_id=user_id,
+            exercise_id=row.id,
+            pr_type=pr_type,
+            value=value,
+            achieved_at=achieved_at,
+            session_id=session_id,
+            notes=notes,
+        )
+        return PrOut.from_pair(record).model_dump(mode="json")
+
+
+@mcp.tool()
 async def get_pr_history(exercise: str, pr_type: str) -> dict[str, Any]:
-    """Chronological PR-setting sets for one exercise + pr_type (weight|reps|hold_time)."""
+    """Chronology of one exercise + pr_type (weight|reps|hold_time), oldest first.
+
+    Includes both auto-detected records and hand-entered ones, interleaved by date; each item
+    carries its ``source``.
+    """
     async with runtime.open_session() as db:
         user_id = runtime.current_user_id()
         row = await exercises.resolve_ref(db, user_id=user_id, ref=exercise)
@@ -286,7 +326,7 @@ async def get_pr_history(exercise: str, pr_type: str) -> dict[str, Any]:
         return PrHistoryOut(
             exercise_id=row.id,
             pr_type=pr_type,
-            items=[SetOut.model_validate(r) for r in history],
+            items=[PrHistoryItem.from_row(r) for r in history],
         ).model_dump(mode="json")
 
 

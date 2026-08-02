@@ -41,8 +41,10 @@ async def test_list_and_history(db_session: AsyncSession) -> None:
     history = await prs.history(
         db_session, user_id=user.id, exercise_id=exercise.id, pr_type="weight"
     )
-    # Both weight PRs (100 then 110) are recorded chronologically.
-    assert [s.weight_kg for s in history] == [100, 110]
+    # Both weight PRs (100 then 110) are recorded chronologically. History reads
+    # ``personal_records_history`` now, not PR-flagged sets — see tests/services/test_manual_prs.
+    assert [float(row.value) for row in history] == [100.0, 110.0]
+    assert {row.source for row in history} == {"auto"}
 
 
 async def test_list_scoped_to_user(db_session: AsyncSession) -> None:

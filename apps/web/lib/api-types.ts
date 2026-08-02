@@ -243,7 +243,14 @@ export interface paths {
         /** List Prs */
         get: operations["list_prs_api_prs_get"];
         put?: never;
-        post?: never;
+        /**
+         * Log Pr
+         * @description Record a PR by hand — the REST twin of the MCP ``log_pr`` tool.
+         *
+         *     For records a logged set cannot express: an estimated 1RM, a hold timed outside a session, or
+         *     a PR migrated from another app. Overwrites whatever is stored for this exercise + metric.
+         */
+        post: operations["log_pr_api_prs_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -838,6 +845,64 @@ export interface components {
              */
             unit_pref: "kg" | "lb";
         };
+        /**
+         * PrCreate
+         * @description A hand-entered record. ``unit`` is not a field — it follows from ``pr_type``.
+         */
+        PrCreate: {
+            /**
+             * Exercise Id
+             * Format: uuid
+             */
+            exercise_id: string;
+            /** Pr Type */
+            pr_type: string;
+            /** Value */
+            value: number;
+            /**
+             * Achieved At
+             * Format: date-time
+             */
+            achieved_at: string;
+            /** Session Id */
+            session_id?: string | null;
+            /** Notes */
+            notes?: string | null;
+        };
+        /**
+         * PrHistoryItem
+         * @description One entry in a record's chronology, auto or manual.
+         *
+         *     This replaces the ``SetOut`` this endpoint used to return. A manual record has no set behind
+         *     it, so a set-shaped payload could not represent one — which is precisely why manual entries
+         *     were missing from PR history before.
+         */
+        PrHistoryItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Pr Type */
+            pr_type: string;
+            /** Value */
+            value: number;
+            /** Unit */
+            unit: string;
+            /**
+             * Achieved At
+             * Format: date-time
+             */
+            achieved_at: string;
+            /** Source */
+            source: string;
+            /** Set Id */
+            set_id: string | null;
+            /** Session Id */
+            session_id: string | null;
+            /** Notes */
+            notes: string | null;
+        };
         /** PrHistoryOut */
         PrHistoryOut: {
             /**
@@ -847,8 +912,11 @@ export interface components {
             exercise_id: string;
             /** Pr Type */
             pr_type: string;
-            /** Items */
-            items: components["schemas"]["SetOut"][];
+            /**
+             * Items
+             * @description Oldest first; manual and auto entries interleaved chronologically.
+             */
+            items: components["schemas"]["PrHistoryItem"][];
         };
         /**
          * PrInfo
@@ -900,6 +968,8 @@ export interface components {
             session_id: string | null;
             /** Notes */
             notes: string | null;
+            /** Source */
+            source: string;
             /** Illustration Url */
             illustration_url: string | null;
             /** Illustration Status */
@@ -1810,6 +1880,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PrListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    log_pr_api_prs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrOut"];
                 };
             };
             /** @description Validation Error */

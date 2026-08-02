@@ -47,7 +47,8 @@ async def test_tools_list_exposes_the_full_surface(
     names = {t["name"] for t in response.json()["result"]["tools"]}
     assert {"search_exercises", "log_session", "log_set", "get_prs", "get_volume_summary"} <= names
     assert {"get_active_session", "finish_session"} <= names  # Phase 11A lifecycle
-    assert len(names) == 17
+    assert {"log_pr", "get_pr_history"} <= names  # manual PR entry
+    assert len(names) == 18
 
 
 async def test_guide_resource_readable(mcp_http: AsyncClient, db_session: AsyncSession) -> None:

@@ -18,7 +18,13 @@ from app.models.oauth import (
     OAuthClient,
     OAuthRefreshToken,
 )
-from app.models.personal_record import PersonalRecord
+from app.models.personal_record import (
+    PR_SOURCES,
+    PR_TYPES,
+    PR_UNITS,
+    PersonalRecord,
+    PersonalRecordHistory,
+)
 from app.models.skill import Skill, SkillProgress
 from app.models.user import User
 from app.models.workout_session import WorkoutSession
@@ -31,7 +37,11 @@ __all__ = [
     "OAuthAuthorizationCode",
     "OAuthClient",
     "OAuthRefreshToken",
+    "PR_SOURCES",
+    "PR_TYPES",
+    "PR_UNITS",
     "PersonalRecord",
+    "PersonalRecordHistory",
     "Skill",
     "SkillProgress",
     "User",
