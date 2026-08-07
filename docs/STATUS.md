@@ -610,18 +610,49 @@ stopping where the evidence does.
 
 - **Projects:** `tempo-web` and `tempo-api` (org `clupai8o0s-projects`), created 2026-08-01, root
   directories `apps/web` and `apps/api`, Node 24.x, Next.js preset on web.
-- **Deploys are CLI-driven** (`vercel --prod` from the app directory), **not** triggered by a push
-  to `main`. Pushing ships nothing on its own; that is worth knowing before assuming a merge went
-  out.
+- **⚠️ A push to `main` deploys both apps.** The projects are git-connected: `git push origin main`
+  builds and promotes `tempo-web` **and** `tempo-api` to production automatically, with no
+  confirmation step. Production runtime logs carry `"branch":"main"` on those deployments, which is
+  how to tell. `vercel --prod` from the repo root does the same thing manually and is *redundant*
+  after a push (it produces a second, duplicate deployment).
+  - An earlier version of this section claimed the opposite — that deploys were CLI-only and a push
+    shipped nothing. That was wrong, it was written into this file, and acting on it caused the
+    incident recorded below. **There is no gap between merging and shipping in which to run a
+    migration.**
+  - **Rollback is the escape hatch:** `vercel rollback <previous-deployment-url> --yes` restores the
+    prior build in about two seconds and needs no database credential. `vercel promote <url> --yes`
+    rolls the same artifact forward again once the schema is ready, with no rebuild.
 - **Verified live 2026-08-07:** `https://tempo.clupai.com/` 200; `https://api.tempo.clupai.com/api/health`
   200 with `{"status":"ok","db":"ok"}`; both OAuth well-knowns 200; unauthenticated `POST /mcp`
   401 carrying `WWW-Authenticate: Bearer resource_metadata=…, error="invalid_token"`.
-- **Deploying a migration — migrate first, then deploy.** Since 11N the API queries `planned_sets`
+- **Deploying a migration — migrate BEFORE you push.** Since 11N the API queries `planned_sets`
   from `analytics.frequency`, `sessions.get_active_session`, `exercises.delete_custom` and
   `corrections.purge`, so shipping that code before its table exists returns 500s on the dashboard
-  rather than degrading. The step is manual and cannot be run from a dev machine that lacks the
-  production credential: `alembic upgrade head` against `DATABASE_URL_UNPOOLED` (unpooled, per
-  `01`), *then* `vercel --prod`.
+  rather than degrading. Because a push *is* a deploy, the schema has to be ahead of `main` at the
+  moment of the push. `alembic upgrade head` against `DATABASE_URL_UNPOOLED` (unpooled, per `01`),
+  *then* `git push`.
+- **Getting the production credential.** `vercel env pull` on CLI 58.4.4 writes `"[SENSITIVE]"` in
+  place of **every** value, including non-secret ones like `NEXT_PUBLIC_API_URL`, and there is no
+  flag to disable it. An hour went into diagnosing that placeholder as a malformed connection
+  string. Take the **direct** (non-`-pooler`) URL from the Neon console instead, and feed it to
+  `alembic` without putting it in an argument or in shell history.
+
+### Incident 2026-08-07 — the 11N push shipped ahead of its schema
+Recorded because the correction is the useful part, not the failure.
+- **What happened:** the three 11N commits were pushed to `main` under the belief that pushing did
+  not deploy. Both apps deployed automatically. `GET /api/analytics/frequency` returned **500** for
+  about an hour (10 requests logged, 18:21-18:22) because its `EXISTS` subquery hit a `planned_sets`
+  table that did not exist yet. Every other endpoint served normally, `/api/health` included — it
+  only runs `SELECT 1`, so it is not a schema-compatibility signal.
+- **Resolution:** `vercel rollback` to the previous build restored service in ~2s without needing a
+  credential; migration `0008` was then applied to Neon; `vercel promote` rolled the identical
+  artifact forward with no rebuild.
+- **Confirmed after, directly against production:** `planned_sets` present; CHECK names
+  `planned_sets_reps_range_check` + `planned_sets_target_rpe_check` (no doubled suffix); the partial
+  index is `WHERE ((completed_set_id IS NOT NULL) AND (deleted_at IS NULL))`, matching
+  `plans._claimant`; the frequency `EXISTS` query executes; data intact (2 users, 876 exercises,
+  8 sessions, 92 sets). **No data was written or lost at any point.**
+- **Captured as a skill** so it cannot recur: `.claude/skills/tempo-ship/SKILL.md`.
 - **Outstanding (every phase gate that production shipped past):**
   - [ ] **Human security review of `docs/05` signed off** — the Phase 3 gate, still unrecorded.
   - [ ] claude.ai connector added over the live handshake + a tool call confirmed (Phase 5 gate).
