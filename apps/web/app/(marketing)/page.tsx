@@ -5,6 +5,12 @@ import { Logo } from "@/components/app/Logo";
 import { DashboardPreview } from "@/components/marketing/DashboardPreview";
 import { Reveal } from "@/components/marketing/Reveal";
 import { RidgeField } from "@/components/marketing/RidgeField";
+import {
+  BetweenSets,
+  Lockout,
+  MovementSheet,
+  RecordMark,
+} from "@/components/marketing/illustrations";
 import { FAQS, FEATURES, STATS, STEPS } from "@/components/marketing/content";
 import { Button, Card } from "@/components/ui";
 import { loginUrl } from "@/lib/auth";
@@ -121,9 +127,9 @@ function Hero() {
         <p className={`eyebrow ${styles.heroEyebrow}`}>Personal-first training log</p>
         <h1 className={styles.heroTitle}>Six months, one honest picture.</h1>
         <p className={styles.heroLede}>
-          Every set you log becomes a mark on the record: volume by movement, sessions by week,
-          and the exact day each personal best landed. No streak guilt, no vanity score. Just what
-          you actually did, kept somewhere you can read it.
+          Every set you log becomes a mark on the record: volume by movement, sessions by week, and
+          the exact day each personal best landed. No streak guilt, no vanity score. Just what you
+          actually did, kept somewhere you can read it.
         </p>
         {/* No caption under the CTAs. The backdrop is abstract, unlabelled and aria-hidden, so
             it asserts nothing that would need a "sample data" disclosure; the dashboard preview
@@ -156,6 +162,15 @@ function Stats() {
   );
 }
 
+/**
+ * One drawing per band, keyed by feature id rather than positionally, so reordering `FEATURES`
+ * cannot silently hand the logging band the library's contact sheet.
+ */
+const FEATURE_ART: Record<string, React.ReactNode> = {
+  library: <MovementSheet />,
+  logging: <BetweenSets className={styles.featureFigure} />,
+};
+
 function Features() {
   return (
     <>
@@ -178,15 +193,18 @@ function Features() {
               </p>
             ))}
           </div>
-          {/* No per-item stagger here: the whole band already reveals as one unit on scroll,
-              and staggering inside something that is itself entering reads as fussy. */}
-          <ul className={styles.featurePoints}>
-            {feature.points.map((point) => (
-              <li key={point} className={styles.featurePoint}>
-                {point}
-              </li>
-            ))}
-          </ul>
+          <div className={styles.featureAside}>
+            {/* No per-item stagger here: the whole band already reveals as one unit on scroll,
+                and staggering inside something that is itself entering reads as fussy. */}
+            <ul className={styles.featurePoints}>
+              {feature.points.map((point) => (
+                <li key={point} className={styles.featurePoint}>
+                  {point}
+                </li>
+              ))}
+            </ul>
+            {FEATURE_ART[feature.id]}
+          </div>
         </Reveal>
       ))}
     </>
@@ -203,8 +221,11 @@ function Steps() {
         </h2>
       </div>
       <ol className={styles.stepsList}>
-        {STEPS.map((step) => (
+        {STEPS.map((step, index) => (
           <li key={step.n} className={styles.step}>
+            {/* Two bars after signing in, five after a session, still growing by the third —
+                the steps drawn as the thing they produce. */}
+            <RecordMark step={index as 0 | 1 | 2} />
             <span className={`eyebrow ${styles.stepNumber}`}>{step.n}</span>
             <h3 className={styles.stepTitle}>{step.title}</h3>
             <p className={styles.stepBody}>{step.body}</p>
@@ -225,8 +246,8 @@ function Chat() {
         </h2>
         <p className={styles.featureBody}>
           Tempo runs an MCP server next to its API, so a chat client like Claude can read your
-          training and log sets through a connection you approve yourself. The same functions
-          serve both, which means the answer you get in chat is the answer the app would give.
+          training and log sets through a connection you approve yourself. The same functions serve
+          both, which means the answer you get in chat is the answer the app would give.
         </p>
         <p className={styles.featureBody}>
           Access is scoped and revocable. You grant it from settings, you can see exactly what is
@@ -273,6 +294,10 @@ function Faq() {
 function FinalCta() {
   return (
     <Reveal as="section" className={styles.finalCta} aria-labelledby="cta-heading">
+      {/* The bar that opened the page at the hang, now overhead. */}
+      <div className={styles.finalCtaFigure}>
+        <Lockout />
+      </div>
       <h2 id="cta-heading" className={styles.finalCtaTitle}>
         Start the record today.
       </h2>

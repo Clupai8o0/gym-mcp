@@ -1,0 +1,25 @@
+/*
+ * Fixed width, not fluid: the three marks have to be read against each other, so a bar has to be
+ * the same size in step 01 as in step 03. A percentage width would make the two-bar mark as wide
+ * as the nine-bar one and destroy the comparison the drawing exists to make.
+ */
+.svg {
+  display: block;
+  width: 4.5rem;
+  height: auto;
+}
+
+.ink,
+.accent {
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
+.ink {
+  stroke: var(--text-muted);
+}
+
+.accent {
+  stroke: var(--accent);
+}

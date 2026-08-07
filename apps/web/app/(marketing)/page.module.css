@@ -218,6 +218,24 @@
   line-height: var(--leading-relaxed);
 }
 
+/* Right-hand column: the points, then the band's drawing under them. */
+.featureAside {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+/*
+ * Capped rather than fluid. Left to fill the column this figure would be a third of a metre of
+ * line art next to three one-line bullets, and the band would read as an illustration with some
+ * text beside it rather than the other way round.
+ */
+.featureFigure {
+  --ill-ink: var(--text-muted);
+  align-self: center;
+  max-width: 17rem;
+}
+
 .featurePoints {
   list-style: none;
   padding: 0;
@@ -405,6 +423,12 @@
   gap: var(--space-5);
   text-align: center;
   border-top: 1px solid var(--border);
+}
+
+.finalCtaFigure {
+  --ill-ink: var(--text-muted);
+  width: 8.5rem;
+  margin-bottom: var(--space-2);
 }
 
 .finalCtaTitle {

@@ -1,0 +1,51 @@
+.grid {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+/*
+ * Hairline cells, echoing the library's exercise cards. The point of the frame is to say "this is
+ * what a row of the catalog looks like", so it borrows the card's border and radius rather than
+ * inventing a marketing-only treatment.
+ */
+.cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-2) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background-color: var(--surface);
+}
+
+.glyph {
+  --ill-ink: var(--text-secondary);
+  width: 100%;
+  max-width: 5.5rem;
+}
+
+.caption {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+  text-align: center;
+  /* Nine characters is "Back squat" with room; longer names wrap rather than shrink the cell. */
+  text-wrap: balance;
+}
+
+@media (max-width: 1000px) {
+  .grid {
+    /* The band goes single-column here, so the sheet gets the full measure and can breathe. */
+    max-width: 34rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
