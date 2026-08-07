@@ -19,7 +19,9 @@ of truth. Old Supabase data is **not** migrated (archived read-only).
 ## Entity map
 
 ```
-users ──┬──< workout_sessions ──< exercise_sets >── exercises (catalog, global or custom)
+users ──┬──< workout_sessions ──┬──< exercise_sets >── exercises (catalog, global or custom)
+        │                       └──< planned_sets >── exercises      # the prescription
+        │                              └─ completed_set_id ──> exercise_sets (nullable)
         ├──< personal_records >── exercises
         ├──< skill_progress >── skills (catalog)
         ├──< oauth_clients (dynamic)        # DCR-registered chat clients
@@ -130,6 +132,69 @@ create index exercise_sets_session_idx on exercise_sets (session_id);
 create index exercise_sets_user_exercise_idx on exercise_sets (user_id, exercise_id);
 create index exercise_sets_pr_idx on exercise_sets (user_id, exercise_id, is_pr);
 ```
+
+### `planned_sets`
+The **prescription**: what a session is meant to contain, as opposed to what it did (Phase 11N,
+migration `0008`). A coach-written plan lives here; nothing in this table is training.
+
+```sql
+create table planned_sets (
+  id                  uuid primary key default gen_random_uuid(),
+  user_id             uuid not null references users(id) on delete cascade,   -- denormalized, as on exercise_sets
+  session_id          uuid not null references workout_sessions(id) on delete cascade,
+  exercise_id         uuid not null references exercises(id),
+  set_number          int not null,                    -- which set of that movement (1-based)
+  order_index         int not null default 0,          -- position in the workout: A1, B1, A2, B2
+  target_reps_min     int,                             -- a range; both ends equal = a fixed count
+  target_reps_max     int,
+  target_weight_kg    numeric,
+  target_rpe          numeric check (target_rpe is null or (target_rpe >= 1 and target_rpe <= 10)),
+  target_hold_seconds int,
+  notes               text,
+  completed_set_id    uuid references exercise_sets(id) on delete set null,   -- the set that satisfied it
+  deleted_at          timestamptz,                     -- soft delete (docs/02 §Corrections)
+  client_key          text,                            -- caller-chosen idempotency key
+  created_at          timestamptz not null default now(),
+  constraint planned_sets_reps_range_check
+    check (target_reps_min is null or target_reps_max is null or target_reps_max >= target_reps_min)
+);
+create index planned_sets_session_idx on planned_sets (session_id, order_index, set_number);
+create index planned_sets_user_exercise_idx on planned_sets (user_id, exercise_id);
+create unique index planned_sets_completed_set_uidx on planned_sets (completed_set_id)
+  where completed_set_id is not null and deleted_at is null;
+create unique index planned_sets_client_key_uidx on planned_sets (user_id, client_key)
+  where client_key is not null;
+create index planned_sets_deleted_at_idx on planned_sets (deleted_at) where deleted_at is not null;
+```
+
+**Why a separate table and not a flag on `exercise_sets`.** Volume, tonnage, frequency and PR
+detection all read `exercise_sets` and nothing else. A prescription stored here cannot reach any of
+them, so there is no exclusion for six aggregate queries to remember — and no first query to forget
+it and credit a lifter with work they were only told to do. It is the stricter sibling of
+`is_backfill` (which counts toward volume but not records): a planned row counts toward **neither**,
+because it is not a record of anything that happened.
+
+**Completion is read through `completed_set_id`, never from it.** A line is done when the set it
+names is still live; a soft-deleted set is not a completion. That is what makes deleting a logged
+set reopen its prescribed line with no second write and nothing to re-sync.
+
+The unique index makes one logged set satisfy at most one **live** line, so a session can never
+report more completed than logged. Both halves of its predicate matter: without `deleted_at is
+null` a *removed* line keeps holding the slot, and the index — not `plans._claimant` — is what
+refuses the next completion, turning a domain conflict into a 500. The predicate is deliberately
+identical to that function's filter.
+
+That scoping has a consequence `restore` has to handle: while a line is deleted its set is free, so
+another line can legally take it. `corrections.restore` therefore clears a restored line's
+`completed_set_id` when the set has been claimed in the meantime — it comes back **outstanding**,
+which is what is true — rather than putting two live rows in the index and turning the *undo* into a
+500.
+
+`on delete set null` (not cascade) means deleting a plan line never deletes the training it
+recorded, and `purge_deleted` can free a set's storage without tripping over the plan that named
+it. `exercise_id` has **no** `on delete` clause, which is why `exercises.delete_custom` counts
+prescribed lines alongside logged sets and refuses (or reassigns) rather than leaving an orphan for
+a later purge to hit as a foreign-key violation.
 
 ### `personal_records`
 One row per (user, exercise, metric). Upserted by the PR-detection logic in `services/sets`.
@@ -316,3 +381,41 @@ rejecting it is what lets it count again later, when the set that outranked it i
 The invariant all of this exists to hold, checked by `services/integrity.verify`: **for every
 (exercise, metric), the counted chronology strictly increases and its last value is the standing
 record.**
+
+## Planning (Phase 11N)
+
+A session could only ever hold sets that had already happened, so a coach-written plan had nowhere
+to live: the only way to say "5×5 at 100 kg on Tuesday" was to log five sets nobody had done — a
+lie the moment anything read volume or records. Migration `0008_planned_sets` adds the other half:
+what a session is *meant* to contain, beside what it did.
+
+One new table, nothing altered. No column was added to `exercise_sets` and no existing query
+changed, which is the point.
+
+| Rule | Where it lives | Why |
+|---|---|---|
+| A prescription is never training | `planned_sets` is its own table; no aggregate joins it | Volume, tonnage, frequency and PR detection read `exercise_sets` only, so the invariant holds by construction rather than by six queries remembering a filter |
+| One door between the two | `services/plans.complete` | It calls `services/sets.log_set` — the same write the log button makes, same PR detection, same `client_key` guard — then records the set's id on the line. A second write path would be a second set of rules |
+| Completion is derived, not stored | `completed_set_id` + "is that set still live?" | Deleting the logged set reopens the line with no second write; a soft-deleted set can never read as adherence |
+| Off-plan work is never blocked | nothing gates `log_set` | You added a movement, did an extra set, swapped an exercise. `session_progress` reports it as `off_plan_count` rather than refusing it — a tool that blocks training because nobody wrote it down first is worse than no plan |
+| A plan cannot outlive its session | `sessions.delete` cascades `planned_sets` unconditionally | `cascade` guards *logged training*, the part you might reasonably keep; there is no "keep the plan, drop the workout" |
+| A plan is not a session you trained | `analytics.frequency` skips sessions that hold a prescription (deleted lines included) and no live set | `frequency` counts `workout_sessions` rows, not sets, so it is the one arm of the invariant a separate table does not hold on its own — a plan written for Tuesday would otherwise register as a session trained the moment it was written. Deleted lines count as "was a prescription", or tidying away a plan you never started would *raise* your training count. An *unplanned* empty session still counts: that is what "I started a workout" has always meant here |
+| A referenced exercise is never purged | `corrections.purge` skips an exercise that any `exercise_sets` or `planned_sets` row still names | Each table is filtered by its **own** age, so an exercise deleted 90 days ago and a row naming it deleted 5 days ago fall on opposite sides of any cutoff — and neither foreign key carries an `ON DELETE`. Declining is right: it goes on a later run once the rows naming it have aged out. Closes the same pre-existing hole for `exercise_sets` |
+
+**A future-dated session is not in progress.** `plan_session` is the first thing in Tempo that
+creates a session dated ahead of now, and the lifecycle only ever looked backwards: both staleness
+clauses in `get_active_session` measure a negative age for a future date, so a plan for next Tuesday
+satisfied every "still live" test and — ordered newest-first — sorted *above* the workout actually
+under way and took its place. `services/sessions.SCHEDULING_SKEW` (5 minutes, for clock skew) is the
+line: past it a session is scheduled, neither returned as active nor swept as abandoned, and it
+becomes the active session on its own once its start passes. See **D36**.
+
+**Both aggregates now exclude soft-deleted rows.** `analytics.volume` and `analytics.frequency`
+never filtered `deleted_at`, so a deleted session's tonnage stayed in every total permanently and
+nothing could take it back — `purge_deleted` frees storage, it is not an undo for a number. A
+pre-existing bug, fixed here because a deleted *plan-only* session is exactly the case the rule
+above is about.
+
+**Adherence is `null`, not `0`, when nothing was prescribed.** `finish_session` reports
+`{planned_total, completed_count, pending_count, off_plan_count, percent}`; on a session logged
+without a plan, both 0% and 100% would be claims about a prescription that never existed.

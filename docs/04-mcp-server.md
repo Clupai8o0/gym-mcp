@@ -51,8 +51,8 @@ REST surface plus catalog search, so chat and UI have parity.
 | `get_exercise` | `exercises.get` | Full detail incl. `illustration_url` |
 | `create_custom_exercise` | `exercises.create_custom` | Add a user's own movement |
 | `log_session` | `sessions.create` | Start/record a session |
-| `get_active_session` | `sessions.get_active_session` | The in-progress session, or `null` (Phase 11A) |
-| `finish_session` | `sessions.finish_session` | End a session + store its duration (Phase 11A) |
+| `get_active_session` | `sessions.get_active_session` | The in-progress session, or `null`; carries `set_count` + `planned_total`/`completed_count` (11A/11N) |
+| `finish_session` | `sessions.finish_session` | End a session, store its duration, report adherence (11A/11N) |
 | `get_session` | `sessions.get` | Session + sets grouped by exercise |
 | `list_sessions` | `sessions.list` | Filter by type/date |
 | `log_set` | `sets.log_set` | Log a set; auto PR detection |
@@ -102,6 +102,45 @@ Three conventions run through all of them:
 Records are **derived state**, and the tools say so instead of pretending otherwise: `update_pr`
 and `delete_pr` refuse an auto-detected record and point at the set behind it, because the next
 recalculation would undo any edit made here.
+
+### Planning (Phase 11N) — a session before it happens
+
+A session could only hold sets that had already happened, so a coach-written plan had nowhere to
+live: the only way to say "5×5 at 100 kg on Tuesday" was to log five sets nobody had done. These
+tools add the prescription alongside the log.
+
+**Nothing prescribed is training.** Planned sets live in their own table (`planned_sets`, docs/02
+§Planning) and no analytics or PR query joins it, so a plan cannot move volume, tonnage, frequency
+or a personal record however it is written. `complete_planned_set` is the single door between the
+two: it calls `sets.log_set` — the same write everything else makes, PR detection and all — and
+records that set's id against the line.
+
+| Tool | Service | Notes |
+|---|---|---|
+| `plan_session` | `plans.plan_session` | Session + prescription, one transaction; `performed_at` may be in the future |
+| `add_planned_sets` | `plans.add_planned_sets` | Append lines; all or nothing, names the bad index |
+| `get_planned_session` | `plans.get_plan` | The plan in performance order + each line's completion state |
+| `update_planned_set` | `plans.update_planned_set` | Corrects the plan; never rewrites the log |
+| `delete_planned_set` | `plans.delete_planned_set` | Soft; a set logged against it stays, as off-plan work |
+| `complete_planned_set` | `plans.complete` | Logs what was actually done and links it; returns the PR verdict |
+| `session_progress` | `plans.progress` | Planned vs completed, remaining movements, next up |
+
+Four conventions specific to this family:
+
+- **Pass what happened, not what was prescribed.** `complete_planned_set` defaults nothing from the
+  targets. A range of 8–10 has no single right answer, and a plan recording its own targets as
+  results would make adherence a number that agrees with the plan by construction.
+- **Off-plan work is never blocked.** `log_set` still works for anything nobody prescribed;
+  `session_progress` reports it as `off_plan_count` rather than refusing it.
+- **Completion is derived.** A line is done while the set it names is live — `delete_set` reopens it
+  with nothing to re-sync, and `delete_planned_set` leaves the training exactly where it is.
+- **`percent` is `null` when nothing was prescribed.** On a session logged without a plan, both 0%
+  and 100% would be claims about a prescription that never existed.
+
+A **future-dated** session is a plan waiting for its day: it is not returned by
+`get_active_session` until its start time arrives (see D36), so read it with
+`get_planned_session`. `client_key` works on `plan_session`, `add_planned_sets` and
+`complete_planned_set` exactly as it does elsewhere.
 
 ### Tool template
 

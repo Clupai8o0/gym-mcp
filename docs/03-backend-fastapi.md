@@ -21,6 +21,7 @@ apps/api/
 │   │   ├── exercises.py
 │   │   ├── sessions.py
 │   │   ├── sets.py             # includes PR detection
+│   │   ├── plans.py            # prescribed sets — the plan, kept out of every derived number
 │   │   ├── prs.py
 │   │   ├── skills.py
 │   │   ├── analytics.py
@@ -31,6 +32,7 @@ apps/api/
 │   │       ├── exercises.py
 │   │       ├── sessions.py
 │   │       ├── sets.py
+│   │       ├── planned_sets.py
 │   │       ├── prs.py
 │   │       ├── skills.py
 │   │       ├── analytics.py
@@ -106,12 +108,19 @@ via `?limit=&offset=` (default limit 50, max 100). All list endpoints are user-s
 | `POST /api/exercises/{id}/illustration` | `images.ensure` | Triggers on-demand generation if missing |
 | `GET /api/sessions` | `sessions.list` | Filters: `type`, `from`, `to` |
 | `POST /api/sessions` | `sessions.create` | |
-| `GET /api/sessions/active` | `sessions.get_active_session` | In-progress session or `null` (Phase 11A; declared before `/{id}`) |
+| `GET /api/sessions/active` | `sessions.get_active_session` | In-progress session or `null`, with `set_count` + `planned_total`/`completed_count` (11A/11N; declared before `/{id}`) |
 | `GET /api/sessions/{id}` | `sessions.get` | Session + sets grouped by exercise |
-| `POST /api/sessions/{id}/finish` | `sessions.finish_session` | Stamp `ended_at` + duration; idempotent (Phase 11A) |
+| `POST /api/sessions/{id}/finish` | `sessions.finish_session` | Stamp `ended_at` + duration, report adherence; idempotent (11A/11N) |
 | `PATCH /api/sessions/{id}` | `sessions.update` | title/type/notes/duration |
 | `DELETE /api/sessions/{id}` | `sessions.delete` | Cascades sets |
 | `POST /api/sessions/{id}/sets` | `sets.log_set` | Auto PR detection |
+| `POST /api/sessions/planned` | `plans.plan_session` | Session + prescription, one transaction (Phase 11N; literal, declared before `/{id}`) |
+| `GET /api/sessions/{id}/planned` | `plans.get_plan` | The prescription in performance order + each line's completion state |
+| `POST /api/sessions/{id}/planned` | `plans.add_planned_sets` | Append lines to an existing prescription |
+| `GET /api/sessions/{id}/progress` | `plans.progress` | Planned vs completed, what is left, what is next |
+| `PATCH /api/planned-sets/{id}` | `plans.update_planned_set` | Never touches what was logged against it |
+| `DELETE /api/planned-sets/{id}` | `plans.delete_planned_set` | Soft; the set it recorded stays, as off-plan work |
+| `POST /api/planned-sets/{id}/complete` | `plans.complete` | Writes a real set via `sets.log_set` — normal PR detection |
 | `PATCH /api/sets/{id}` | `sets.update` | Recomputes PR if metrics change |
 | `DELETE /api/sets/{id}` | `sets.delete` | |
 | `GET /api/prs` | `prs.list` | Optional `exercise_id` filter |
@@ -120,10 +129,10 @@ via `?limit=&offset=` (default limit 50, max 100). All list endpoints are user-s
 | `GET /api/skills/{slug}` | `skills.detail` | |
 | `PUT /api/skills/{slug}/progress` | `skills.upsert_progress` | |
 | `GET /api/analytics/volume` | `analytics.volume` | `from`,`to`, optional `exercise_id` |
-| `GET /api/analytics/frequency` | `analytics.frequency` | Sessions per ISO week, last N weeks |
+| `GET /api/analytics/frequency` | `analytics.frequency` | Sessions per ISO week, last N weeks; skips deleted and plan-only sessions (11N) |
 
 > The MCP tool set (see `04`) mirrors this table 1:1 plus catalog search — same services, so
-> REST and MCP can never diverge.
+> REST and MCP can never diverge. The contract test asserts it.
 
 ## Database access
 

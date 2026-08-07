@@ -3,6 +3,23 @@
 Volume tonnage sums ``weight_kg × reps`` per exercise, but is reported as ``None`` when
 any set in the range was bodyweight (null weight) — a partial tonnage would mislead.
 Frequency counts sessions into Monday-anchored weekly buckets for the last N weeks.
+
+**Both count only what actually happened.** Two filters carry that, and neither is decoration:
+
+* **Soft-deleted rows are excluded.** Deleting a session is supposed to take it out of the data,
+  not just out of the list; without the filter its tonnage stayed in every total forever and there
+  was no way to take it back (``purge_deleted`` frees storage, it is not an undo for a number).
+* **A session that carries a prescription and no live set is not a workout you did** (Phase 11N).
+  ``frequency`` counts ``workout_sessions`` rows, so a plan written for Tuesday would otherwise
+  register as a session trained the moment it was written — the exact claim the planning layer
+  exists to avoid. A session with **no** plan still counts when it is empty, which is the
+  pre-existing meaning of "I started a workout"; planning is not a reason to redefine that.
+
+  Two edges of that rule, stated rather than glossed. The plan is looked for **including deleted
+  lines**, so tidying away a plan you never started cannot raise your training count. And a session
+  that *was* trained and then had every one of its sets deleted stops counting if it carries a plan,
+  while the same session without one keeps counting — the asymmetry is real, and it falls on the
+  side of not claiming training that no longer exists in the log.
 """
 
 from __future__ import annotations
@@ -12,11 +29,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import errors
-from app.models import Exercise, ExerciseSet, WorkoutSession
+from app.models import Exercise, ExerciseSet, PlannedSet, WorkoutSession
 
 
 @dataclass(frozen=True)
@@ -76,6 +93,8 @@ async def volume(
         .join(Exercise, ExerciseSet.exercise_id == Exercise.id)
         .where(
             ExerciseSet.user_id == user_id,
+            ExerciseSet.deleted_at.is_(None),
+            WorkoutSession.deleted_at.is_(None),
             WorkoutSession.performed_at >= date_from,
             WorkoutSession.performed_at <= date_to,
         )
@@ -125,13 +144,33 @@ async def frequency(
 
     counts: dict[date, int] = {start_monday + timedelta(weeks=i): 0 for i in range(weeks)}
 
+    # "Has this session been trained?" — any live set at all.
+    has_set = (
+        select(ExerciseSet.id)
+        .where(ExerciseSet.session_id == WorkoutSession.id, ExerciseSet.deleted_at.is_(None))
+        .exists()
+    )
+    # "Was this session ever a prescription?" — deleted lines included, deliberately. Keying on
+    # *live* lines would mean deleting the last line of a plan you never started **raises** your
+    # training count: 0 while the plan was there, 1 once you tidied it away. `plans.plan_session`
+    # asks the same question the same way, for the same reason.
+    has_plan = select(PlannedSet.id).where(PlannedSet.session_id == WorkoutSession.id).exists()
+
     performed_ats = (
         (
             await db.execute(
                 select(WorkoutSession.performed_at).where(
                     WorkoutSession.user_id == user_id,
+                    WorkoutSession.deleted_at.is_(None),
                     WorkoutSession.performed_at
                     >= datetime.combine(start_monday, datetime.min.time(), tzinfo=UTC),
+                    # A prescription nobody has started is not a session trained. An ordinary
+                    # empty session still counts — that is what "I started a workout" has always
+                    # meant here, and planning is not a reason to redefine it. The two EXISTS are
+                    # joined by OR, so neither can become a semi-join and Postgres may hash either
+                    # into a subplan; both inner tables are covered by a `session_id` index, and
+                    # the shape is a session-count query rather than a hot path.
+                    or_(~has_plan, has_set),
                 )
             )
         )

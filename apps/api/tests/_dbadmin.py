@@ -122,3 +122,19 @@ def public_tables(url: str) -> set[str]:
 
 def installed_extensions(url: str) -> set[str]:
     return set(_run(_fetch_column(url, "SELECT extname FROM pg_extension")))
+
+
+def check_constraints(url: str, table: str) -> set[str]:
+    """The names of the CHECK constraints on ``table`` as the database actually has them."""
+    sql = (
+        "SELECT conname FROM pg_constraint "
+        f"WHERE conrelid = '{table}'::regclass AND contype = 'c'"
+    )
+    return set(_run(_fetch_column(url, sql)))
+
+
+def index_predicate(url: str, index: str) -> str:
+    """The full ``CREATE INDEX`` statement Postgres reports for ``index`` (predicate included)."""
+    sql = f"SELECT indexdef FROM pg_indexes WHERE indexname = '{index}'"
+    found = _run(_fetch_column(url, sql))
+    return found[0] if found else ""

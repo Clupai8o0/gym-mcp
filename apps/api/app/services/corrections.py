@@ -25,7 +25,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import clock, errors
-from app.models import Exercise, ExerciseSet, PersonalRecordHistory, WorkoutSession
+from app.models import Exercise, ExerciseSet, PersonalRecordHistory, PlannedSet, WorkoutSession
 
 #: What ``restore`` and ``purge`` can act on. The value is the mapped class; the key is what a
 #: caller says.
@@ -34,6 +34,7 @@ _ENTITIES: dict[str, Any] = {
     "set": ExerciseSet,
     "exercise": Exercise,
     "pr_history_entry": PersonalRecordHistory,
+    "planned_set": PlannedSet,
 }
 
 ENTITY_TYPES: tuple[str, ...] = tuple(_ENTITIES)
@@ -89,9 +90,16 @@ async def restore(
 ) -> Restored:
     """Undo a soft delete, and rebuild whatever records depended on the row being gone.
 
-    Restoring a **session** brings back the sets that were deleted *with* it — matched on the
-    delete's timestamp, so sets deleted separately beforehand stay deleted. Anything else would
-    make restore a resurrection of every set the session ever had.
+    Restoring a **session** brings back the sets *and the prescribed lines* that were deleted with
+    it — matched on the delete's timestamp, so anything deleted separately beforehand stays
+    deleted. Anything else would make restore a resurrection of every set the session ever had.
+
+    A **planned_set** restores on its own and rebuilds nothing: a prescription is not an input to
+    any record, so there is nothing derived from it to recompute. It comes back still pointing at
+    the set that completed it — unless another line has claimed that set in the meantime, in which
+    case it comes back outstanding, because the training is somewhere else now (see
+    :func:`app.services.plans.reopen_if_claim_taken`). Restoring it with the claim intact would put
+    two live rows in the partial unique index and turn the **undo** into a 500.
     """
     model = _model_for(entity_type)
     row = await _fetch(db, model, user_id, entity_id)
@@ -100,10 +108,17 @@ async def restore(
         raise errors.validation(f"That {entity_type} is not deleted", entity_id=str(entity_id))
 
     stamp = row.deleted_at
+    if model is PlannedSet:
+        from app.services import plans
+
+        await plans.reopen_if_claim_taken(db, row)
     row.deleted_at = None
 
     exercise_ids: set[uuid.UUID] = set()
     if model is WorkoutSession:
+        from app.services import plans
+
+        await plans.restore_for_session(db, session_id=entity_id, at=stamp)
         for child in (
             (
                 await db.execute(
@@ -149,7 +164,16 @@ async def purge(
     """Hard-delete rows soft-deleted longer ago than ``older_than_days``. Irreversible.
 
     Ordered children-before-parents so a purge cannot trip a foreign key: sets before the
-    sessions that hold them, history before the exercises it points at.
+    sessions that hold them, history before the exercises it points at, prescribed lines before
+    the sets they name (``planned_sets.completed_set_id`` is ``ON DELETE SET NULL``, so the order
+    is belt-and-braces rather than load-bearing — but a purge that depends on a cascade to stay
+    upright is one schema change from breaking).
+
+    Ordering alone is not enough for **exercises**, because each table is filtered by its *own*
+    age: an exercise deleted 90 days ago and a set deleted 5 days ago sit on opposite sides of any
+    cutoff, and neither ``exercise_sets.exercise_id`` nor ``planned_sets.exercise_id`` carries an
+    ``ON DELETE`` clause. An exercise still referenced by anything is therefore skipped rather than
+    attempted; it goes on a later run, once the rows naming it have aged out too.
 
     ``older_than_days = 0`` is rejected. A purge with no window is indistinguishable from "delete
     everything I just removed", which is exactly the operation an undo is supposed to protect.
@@ -166,6 +190,15 @@ async def purge(
 
     # Children first: an ExerciseSet references a WorkoutSession, and history references both.
     order: Sequence[tuple[str, Any, Callable[[], Any]]] = (
+        (
+            "planned_set",
+            PlannedSet,
+            lambda: (
+                PlannedSet.user_id == user_id,
+                PlannedSet.deleted_at.is_not(None),
+                PlannedSet.deleted_at < cutoff,
+            ),
+        ),
         (
             "pr_history_entry",
             PersonalRecordHistory,
@@ -200,6 +233,16 @@ async def purge(
                 Exercise.created_by_user_id == user_id,
                 Exercise.deleted_at.is_not(None),
                 Exercise.deleted_at < cutoff,
+                # …and nothing still points at it. `exercise_sets.exercise_id` and
+                # `planned_sets.exercise_id` are plain foreign keys with no `ON DELETE`, and the
+                # rows referencing a deleted exercise are filtered by *their own* age — so an
+                # exercise removed 90 days ago and a set removed 5 days ago fall on opposite sides
+                # of any cutoff, and the DELETE below raises a foreign-key violation that reaches
+                # the caller as a 500 rather than a purge. Declining to purge is the right answer:
+                # the exercise is still referenced, and it will go on the next run once the rows
+                # naming it have aged out too.
+                ~select(ExerciseSet.id).where(ExerciseSet.exercise_id == Exercise.id).exists(),
+                ~select(PlannedSet.id).where(PlannedSet.exercise_id == Exercise.id).exists(),
             ),
         ),
     )

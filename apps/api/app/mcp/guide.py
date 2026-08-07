@@ -25,9 +25,12 @@ scoped to the account that authorized this connection.
   `workouts.write`.
 - **Nothing you write is permanent.** Every delete is soft: the row leaves all reads and
   `restore(entity_type, id)` brings it back. Only `purge_deleted` erases anything for good.
-- **Retries are safe.** `log_session`, `log_set`, `log_sets` and `log_pr` take an optional
-  `client_key` — any string you can reproduce. A second call with the same key returns the first
-  call's record instead of creating a duplicate. Use it whenever you are importing or backfilling.
+- **Retries are safe.** `log_session`, `log_set`, `log_sets`, `log_pr`, `plan_session`,
+  `add_planned_sets` and `complete_planned_set` take an optional `client_key` — any string you can
+  reproduce. A second call with the same key returns the first call's record instead of creating a
+  duplicate. Use it whenever you are importing or backfilling.
+- **Planned and logged are different things.** A prescribed set is an instruction; only a logged set
+  counts toward volume, tonnage, frequency and records. See "Planning a workout" below.
 
 ## Session lifecycle
 A session is **in progress** until it is finished — `ended_at` is `null`, and nothing about
@@ -36,6 +39,39 @@ if it returns one, log into that instead of creating a duplicate. `finish_sessio
 closes it and stores `duration_minutes`; it is safe to call twice. A session left open and
 untouched for 12 hours is finished automatically the next time anything reads it, dated
 from its last set.
+
+## Planning a workout
+
+`plan_session(performed_at, planned_sets=[...])` writes a workout **before** it happens: the session
+and its prescription, one transaction. Each line takes `exercise` (UUID, slug or name),
+`set_number`, and any of `target_reps_min`, `target_reps_max`, `target_weight_kg`, `target_rpe`,
+`target_hold_seconds`, `notes`, `order_index`. Every target is optional — a line with none says "do
+a set of this", which is a real instruction. Order is preserved, so a superset written A1, B1, A2,
+B2 reads back that way.
+
+**Nothing prescribed is training.** Planned sets live in their own table; they never move volume,
+tonnage, frequency or a personal record. Work through the plan with
+`complete_planned_set(planned_set_id, weight_kg=..., reps=...)`, which logs a **real set** (normal
+PR detection, with a `pr` verdict in the result) and links it back to the line.
+
+**Pass what you actually did.** Nothing is defaulted from the targets: a range of 8–10 has no single
+right answer, and a plan recording its own targets as results would make adherence agree with itself.
+
+You do not have to work through the plan to train. `log_set` still works for anything nobody
+prescribed, and `session_progress(session_id)` reports it as `off_plan_count` rather than refusing
+it — it also gives you planned vs completed counts, which movements still have work outstanding, and
+`next_up`. `finish_session` returns the same counts as `adherence`; `percent` is `null` when the
+session had no plan.
+
+`performed_at` may be in the future — that is the normal case for a plan. A session dated for a
+later day is **not** "in progress" and `get_active_session` will not return it until its start time
+arrives; read it with `get_planned_session(session_id)` before then. Once it is the active session,
+`get_active_session` carries `planned_total` and `completed_count` alongside `set_count`.
+
+Deleting is symmetrical and never destroys the other half: `delete_planned_set` leaves the set it
+recorded in the log (as off-plan work), and `delete_set` puts its prescribed line back to
+outstanding. `update_planned_set` corrects the plan and never rewrites the log — for that, use
+`update_set`.
 
 ## Typical workflow
 1. `get_active_session()` → already training? Reuse that `session_id` and skip to step 3.
@@ -61,12 +97,13 @@ reps record of 1.
 ## Fixing things
 Every write has an undo, and nothing needs the delete-and-reinsert dance:
 
-- **A wrong number** — `update_set`, `update_session`, `update_pr`, `update_custom_exercise`.
+- **A wrong number** — `update_set`, `update_session`, `update_planned_set`, `update_pr`,
+  `update_custom_exercise`.
   Only the arguments you pass change. To empty a note rather than leave it, pass
   `clear_notes: true`: omitting an argument already means "leave alone".
-- **Something that should not exist** — `delete_set`, `delete_session`,
+- **Something that should not exist** — `delete_set`, `delete_session`, `delete_planned_set`,
   `delete_pr_history_entry`, `delete_pr`, `delete_custom_exercise`. All soft; `restore` undoes
-  any of them. Deletes that would leave orphans refuse and say what to do: a session with sets
+  any of them (`entity_type` is `session`, `set`, `planned_set`, `exercise` or `pr_history_entry`). Deletes that would leave orphans refuse and say what to do: a session with sets
   needs `cascade: true`; a custom exercise with sets needs `reassign_to`.
 - **Records that look wrong** — `verify_pr_integrity()` reports any exercise whose chronology
   steps downward or whose record disagrees with it; `recalculate_prs()` rebuilds from the live
@@ -84,6 +121,8 @@ describes a set that exists, so `update_pr`/`delete_pr` refuse it and point you 
 - **Logging:** `log_session`, `log_session_with_sets`, `update_session`, `delete_session`,
   `get_active_session`, `finish_session`, `list_sessions`, `get_session`, `get_session_sets`,
   `log_set`, `log_sets`, `update_set`, `delete_set`
+- **Planning:** `plan_session`, `add_planned_sets`, `get_planned_session`, `update_planned_set`,
+  `delete_planned_set`, `complete_planned_set`, `session_progress`
 - **Records:** `get_prs`, `get_pr_history`, `log_pr`, `update_pr`, `delete_pr`,
   `delete_pr_history_entry`
 - **Integrity:** `recalculate_prs`, `verify_pr_integrity`, `restore`, `purge_deleted`

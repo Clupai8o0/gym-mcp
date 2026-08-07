@@ -20,6 +20,15 @@ every timezone, needs nothing from the client, and answers the question actually
 *could this still be happening?* — rather than *what day is it where the server is?*
 :data:`STALE_AFTER` is that window, reused so a session can never be created open and then be
 considered abandoned by the very next read.
+
+**A session dated in the future has not started.** The window above only ever looked backwards,
+so a session scheduled for next Tuesday satisfied every "still live" test — both staleness clauses
+compare against a negative age — and, ordered newest-first, it sorted *above* the workout actually
+in progress and became the active session in its place. Nothing surfaced it before planning existed
+because nothing created future-dated sessions; ``plan_session`` does, on purpose. :data:`SCHEDULING_SKEW`
+is the tolerance: a session that starts meaningfully later than now is a plan waiting for its time,
+neither returned as active nor swept as abandoned, and it becomes the active session by itself the
+moment its start passes.
 """
 
 from __future__ import annotations
@@ -28,13 +37,16 @@ import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import clock, errors
-from app.models import Exercise, ExerciseSet, WorkoutSession
+from app.models import Exercise, ExerciseSet, PlannedSet, WorkoutSession
+
+if TYPE_CHECKING:  # `plans` builds on this module; the import would be circular at runtime.
+    from app.services.plans import Adherence
 
 # Fields a PATCH may change (values are already Pydantic-validated by the router).
 _UPDATABLE = frozenset({"title", "type", "notes", "duration_minutes", "performed_at", "ended_at"})
@@ -44,6 +56,12 @@ _UPDATABLE = frozenset({"title", "type", "notes", "duration_minutes", "performed
 # night's sleep and swallow tomorrow's training. Doubles as the window inside which a session
 # being created is still plausibly live (see the module docstring).
 STALE_AFTER = timedelta(hours=12)
+
+# How far ahead of *now* a session may start and still count as one you could be training. Past
+# it, the session is scheduled rather than under way — a plan for tonight, or for next Tuesday.
+# Small but not zero: a client's clock and the server's disagree by seconds, and "I am starting
+# now" must not read as "I am starting later" because a phone is a minute fast.
+SCHEDULING_SKEW = timedelta(minutes=5)
 
 # The ceiling on a duration the app *derives* rather than one the caller stated. A session left
 # open for a week and then finished would otherwise record 136,070 minutes of training and skew
@@ -63,16 +81,33 @@ class SessionDetail:
 
 @dataclass(frozen=True)
 class ActiveSession:
-    """The in-progress session and how many sets are in it so far.
+    """The in-progress session, how many sets are in it, and how much of its plan is done.
 
     The count travels with the session because every caller that asks "am I training?" also
     wants to say *how far in* — the docked session bar and the home workout card both do. It
     is free here: :func:`_activity` already scans this session's sets to decide whether the
     session is stale, so it counts them in the same statement.
+
+    The two planning numbers travel for the same reason and are **not** the same question.
+    ``set_count`` is everything logged, on-plan or not; ``completed_count`` is how many prescribed
+    lines have been satisfied out of ``planned_total``. A session with a plan and nothing logged
+    yet is still the active session — that is the whole point of writing the plan first — and it
+    reports ``planned_total`` with ``set_count`` and ``completed_count`` both at zero.
+    ``planned_total`` is ``0`` on an ordinary unplanned workout.
     """
 
     session: WorkoutSession
     set_count: int
+    planned_total: int = 0
+    completed_count: int = 0
+
+
+@dataclass(frozen=True)
+class FinishedSession:
+    """A closed session and how much of its prescription it actually covered."""
+
+    session: WorkoutSession
+    adherence: Adherence
 
 
 async def _owned(
@@ -305,6 +340,9 @@ class SessionDeletion:
     set_count: int
     exercises_recalculated: int
     dry_run: bool
+    #: Prescribed lines removed with the session. Reported rather than guarded: a plan cannot
+    #: outlive the session it prescribes, so there is nothing for the caller to decide.
+    planned_count: int = 0
 
 
 async def delete(
@@ -322,9 +360,14 @@ async def delete(
     workout, and removing the header while leaving the rows would leave sets that still count
     toward records and volume but belong to a workout that no longer happened. The refusal says
     how many, so the caller can decide with the number in front of them.
+
+    Any **prescription** goes with the session unconditionally, ``cascade`` or not, and is only
+    reported. ``cascade`` guards logged training — the thing you might reasonably want to keep —
+    and a plan for a workout that no longer exists is not something anyone would choose to keep.
+    ``restore`` brings it back with the session.
     """
     session = await _owned(db, user_id, session_id)
-    from app.services import integrity
+    from app.services import integrity, plans
 
     exercise_ids = await integrity.exercises_touched_by_session(
         db, user_id=user_id, session_id=session_id
@@ -345,16 +388,26 @@ async def delete(
             set_count=live_sets,
         )
 
+    live_planned = (
+        await db.execute(
+            select(func.count()).where(
+                PlannedSet.session_id == session_id, PlannedSet.deleted_at.is_(None)
+            )
+        )
+    ).scalar_one()
+
     if dry_run:
         return SessionDeletion(
             session=session,
             set_count=live_sets,
             exercises_recalculated=len(exercise_ids),
             dry_run=True,
+            planned_count=live_planned,
         )
 
     stamp = at or clock.now()
     session.deleted_at = stamp
+    planned_count = await plans.soft_delete_for_session(db, session_id=session_id, at=stamp)
     if cascade:
         for row in (
             (
@@ -378,6 +431,7 @@ async def delete(
         set_count=live_sets,
         exercises_recalculated=len(exercise_ids),
         dry_run=False,
+        planned_count=planned_count,
     )
 
 
@@ -436,17 +490,29 @@ async def finish_session(
     user_id: uuid.UUID,
     session_id: uuid.UUID,
     ended_at: datetime | None = None,
-) -> WorkoutSession:
-    """Close a session: stamp ``ended_at`` and store the derived ``duration_minutes``.
+) -> FinishedSession:
+    """Close a session: stamp ``ended_at``, store the derived ``duration_minutes``, report adherence.
 
     **Idempotent** — finishing an already-finished session returns it untouched rather than
     raising, so a double-tap (or a retried offline write) is harmless. Cross-user scoping is
     the same as everywhere else: someone else's session is ``not_found``.
+
+    Adherence rides along rather than living behind a second call because the end of a workout is
+    the one moment the answer is worth anything — "you did 9 of the 12 that were written down" is
+    what closing a prescribed session means. Returning it from *this* function, instead of leaving
+    each adapter to fetch it, is what stops the REST and MCP surfaces reporting different things:
+    there is one place the number comes from. On a session nobody prescribed, ``percent`` is
+    ``None`` — see :class:`app.services.plans.Adherence`.
     """
     session = await _owned(db, user_id, session_id)
-    if session.ended_at is not None:
-        return session
-    return await _stamp_finished(db, session, ended_at or datetime.now(tz=UTC))
+    if session.ended_at is None:
+        await _stamp_finished(db, session, ended_at or datetime.now(tz=UTC))
+
+    from app.services import plans  # circular at module scope: `plans` builds on this module
+
+    return FinishedSession(
+        session=session, adherence=await plans.adherence(db, session_id=session_id)
+    )
 
 
 async def get_active_session(
@@ -480,6 +546,13 @@ async def get_active_session(
 
     active: ActiveSession | None = None
     for session in open_sessions:
+        # A session that has not started yet is a plan, not a workout. It is skipped entirely —
+        # not returned, and not swept either, because a session cannot be abandoned before it was
+        # due. Checked first: both staleness clauses below measure a *negative* age for a future
+        # date and would wave it through as the freshest thing on the list.
+        if session.performed_at - at > SCHEDULING_SKEW:
+            continue
+
         touched, set_count = await _activity(db, session)
         # Two ways an open session is not the one you are training right now: nothing has
         # touched it in half a day, or it *started* longer ago than a workout can last. The
@@ -490,4 +563,18 @@ async def get_active_session(
             await _stamp_finished(db, session, touched)
         elif active is None:
             active = ActiveSession(session=session, set_count=set_count)
-    return active
+
+    if active is None:
+        return None
+    # Imported here, not at module scope: `plans` builds on this module, so a top-level import
+    # would be circular. Counted only for the session that won — the sweep above may have looked
+    # at several, and none of the others is going to be asked about.
+    from app.services import plans
+
+    planned_total, completed_count = await plans.counts(db, session_id=active.session.id)
+    return ActiveSession(
+        session=active.session,
+        set_count=active.set_count,
+        planned_total=planned_total,
+        completed_count=completed_count,
+    )

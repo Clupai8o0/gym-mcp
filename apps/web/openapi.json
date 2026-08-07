@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Tempo API",
-    "version": "0.5.0"
+    "version": "0.6.0"
   },
   "paths": {
     "/api/health": {
@@ -692,7 +692,7 @@
           "sessions"
         ],
         "summary": "Create Session With Sets",
-        "description": "Create a session and its sets in one transaction — all or nothing.",
+        "description": "Create a session and its sets in one transaction \u2014 all or nothing.",
         "operationId": "create_session_with_sets_api_sessions_with_sets_post",
         "requestBody": {
           "content": {
@@ -711,6 +711,188 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SessionWithSetsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/planned": {
+      "post": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Plan Session",
+        "description": "Create a session and its prescription in one transaction \u2014 a workout not yet performed.",
+        "operationId": "plan_session_api_sessions_planned_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlannedSessionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlannedSessionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{session_id}/planned": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Get Planned Session",
+        "description": "A session's prescription in performance order, each line with its completion state.",
+        "operationId": "get_planned_session_api_sessions__session_id__planned_get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlannedSessionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Add Planned Sets",
+        "description": "Append lines to an existing session's prescription, transactionally.",
+        "operationId": "add_planned_sets_api_sessions__session_id__planned_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlannedSetsCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlannedSessionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{session_id}/progress": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Session Progress",
+        "description": "Planned vs completed for one session, what is left, and what is next.",
+        "operationId": "session_progress_api_sessions__session_id__progress_get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionProgressOut"
                 }
               }
             }
@@ -890,7 +1072,7 @@
           "sessions"
         ],
         "summary": "Finish Session",
-        "description": "Close a session and store its duration. Idempotent — finishing a finished one is a no-op.",
+        "description": "Close a session, store its duration, and report adherence. Idempotent.",
         "operationId": "finish_session_api_sessions__session_id__finish_post",
         "parameters": [
           {
@@ -910,7 +1092,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SessionOut"
+                  "$ref": "#/components/schemas/FinishedSessionOut"
                 }
               }
             }
@@ -1130,6 +1312,156 @@
         }
       }
     },
+    "/api/planned-sets/{planned_set_id}": {
+      "patch": {
+        "tags": [
+          "planned-sets"
+        ],
+        "summary": "Update Planned Set",
+        "description": "Correct one line of a prescription. Never touches what was logged against it.",
+        "operationId": "update_planned_set_api_planned_sets__planned_set_id__patch",
+        "parameters": [
+          {
+            "name": "planned_set_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Planned Set Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlannedSetUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlannedSetOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "planned-sets"
+        ],
+        "summary": "Delete Planned Set",
+        "description": "Soft-delete one prescribed line.\n\nReturns the removed row rather than 204, for the same reason `DELETE /api/sets/{id}` does: the\ncaller gets the id to `restore` with. A set already logged against the line stays exactly where\nit is and simply becomes off-plan work.",
+        "operationId": "delete_planned_set_api_planned_sets__planned_set_id__delete",
+        "parameters": [
+          {
+            "name": "planned_set_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Planned Set Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlannedSetOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/planned-sets/{planned_set_id}/complete": {
+      "post": {
+        "tags": [
+          "planned-sets"
+        ],
+        "summary": "Complete Planned Set",
+        "description": "Log what was actually done against a prescribed line; normal PR detection applies.",
+        "operationId": "complete_planned_set_api_planned_sets__planned_set_id__complete_post",
+        "parameters": [
+          {
+            "name": "planned_set_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Planned Set Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlannedSetComplete"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompletedPlannedSetOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/prs": {
       "get": {
         "tags": [
@@ -1184,7 +1516,7 @@
           "prs"
         ],
         "summary": "Log Pr",
-        "description": "Record a PR by hand — the REST twin of the MCP ``log_pr`` tool.\n\nFor records a logged set cannot express: an estimated 1RM, a hold timed outside a session, or\na PR migrated from another app. Overwrites whatever is stored for this exercise + metric.",
+        "description": "Record a PR by hand \u2014 the REST twin of the MCP ``log_pr`` tool.\n\nFor records a logged set cannot express: an estimated 1RM, a hold timed outside a session, or\na PR migrated from another app. Overwrites whatever is stored for this exercise + metric.",
         "operationId": "log_pr_api_prs_post",
         "requestBody": {
           "required": true,
@@ -2401,6 +2733,16 @@
           "set_count": {
             "type": "integer",
             "title": "Set Count"
+          },
+          "planned_total": {
+            "type": "integer",
+            "title": "Planned Total",
+            "default": 0
+          },
+          "completed_count": {
+            "type": "integer",
+            "title": "Completed Count",
+            "default": 0
           }
         },
         "type": "object",
@@ -2409,7 +2751,48 @@
           "set_count"
         ],
         "title": "ActiveSessionOut",
-        "description": "The user's in-progress session, or ``null`` when they aren't training.\n\nWrapped rather than returned bare so \"no active session\" is an ordinary 200 with a\ntyped, nullable field — clients poll this on every screen and a 404 would be noise.\n\n``set_count`` lives here and **not** on :class:`SessionOut`, which is validated straight\noff raw ORM rows at every other call site and would raise on a required field with no\nmatching attribute. It is here because it is what the callers of this endpoint actually\nneed next: both the docked session bar and the home workout card say \"N sets\" and would\notherwise fetch the entire session detail — every set plus full exercise rows — to count."
+        "description": "The user's in-progress session, or ``null`` when they aren't training.\n\nWrapped rather than returned bare so \"no active session\" is an ordinary 200 with a\ntyped, nullable field \u2014 clients poll this on every screen and a 404 would be noise.\n\n``set_count`` lives here and **not** on :class:`SessionOut`, which is validated straight\noff raw ORM rows at every other call site and would raise on a required field with no\nmatching attribute. It is here because it is what the callers of this endpoint actually\nneed next: both the docked session bar and the home workout card say \"N sets\" and would\notherwise fetch the entire session detail \u2014 every set plus full exercise rows \u2014 to count."
+      },
+      "AdherenceOut": {
+        "properties": {
+          "planned_total": {
+            "type": "integer",
+            "title": "Planned Total"
+          },
+          "completed_count": {
+            "type": "integer",
+            "title": "Completed Count"
+          },
+          "pending_count": {
+            "type": "integer",
+            "title": "Pending Count"
+          },
+          "off_plan_count": {
+            "type": "integer",
+            "title": "Off Plan Count"
+          },
+          "percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent"
+          }
+        },
+        "type": "object",
+        "required": [
+          "planned_total",
+          "completed_count",
+          "pending_count",
+          "off_plan_count",
+          "percent"
+        ],
+        "title": "AdherenceOut",
+        "description": "How much of the prescription was done.\n\n``percent`` is ``null`` when nothing was prescribed \u2014 neither 0 nor 100 is true of a session\nthat had no plan, and both would read as a judgement about one."
       },
       "AuthorizationServerMetadata": {
         "properties": {
@@ -2576,6 +2959,23 @@
         ],
         "title": "ClientRegistrationRequest",
         "description": "Inbound DCR body. Unknown RFC 7591 metadata fields are ignored, not rejected."
+      },
+      "CompletedPlannedSetOut": {
+        "properties": {
+          "planned": {
+            "$ref": "#/components/schemas/PlannedSetOut"
+          },
+          "logged": {
+            "$ref": "#/components/schemas/LoggedSetOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "planned",
+          "logged"
+        ],
+        "title": "CompletedPlannedSetOut",
+        "description": "The line that was just satisfied, and the set that did it (with its PR verdict)."
       },
       "ConnectionListOut": {
         "properties": {
@@ -2781,6 +3181,11 @@
           "dry_run": {
             "type": "boolean",
             "title": "Dry Run"
+          },
+          "planned_count": {
+            "type": "integer",
+            "title": "Planned Count",
+            "default": 0
           }
         },
         "type": "object",
@@ -2791,7 +3196,7 @@
           "dry_run"
         ],
         "title": "ExerciseDeleteOut",
-        "description": "What a custom-exercise delete did — or, with ``dry_run``, would have done."
+        "description": "What a custom-exercise delete did \u2014 or, with ``dry_run``, would have done."
       },
       "ExerciseDetailOut": {
         "properties": {
@@ -3119,6 +3524,34 @@
         "title": "ExerciseOut",
         "description": "Catalog summary (list rows + nested group headers)."
       },
+      "ExerciseProgressOut": {
+        "properties": {
+          "exercise": {
+            "$ref": "#/components/schemas/ExerciseOut"
+          },
+          "planned": {
+            "type": "integer",
+            "title": "Planned"
+          },
+          "completed": {
+            "type": "integer",
+            "title": "Completed"
+          },
+          "remaining": {
+            "type": "integer",
+            "title": "Remaining"
+          }
+        },
+        "type": "object",
+        "required": [
+          "exercise",
+          "planned",
+          "completed",
+          "remaining"
+        ],
+        "title": "ExerciseProgressOut",
+        "description": "One movement's share of the prescription."
+      },
       "ExerciseSetGroup": {
         "properties": {
           "exercise": {
@@ -3256,6 +3689,98 @@
         "type": "object",
         "title": "ExerciseUpdate",
         "description": "Patch a **custom** exercise; only supplied fields change.\n\nNo ``slug``: it is derived from ``name``, so the two cannot drift. Renaming keeps the old slug\nresolvable as an alias."
+      },
+      "FinishedSessionOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "performed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Performed At"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "duration_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Minutes"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "adherence": {
+            "$ref": "#/components/schemas/AdherenceOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "type",
+          "performed_at",
+          "ended_at",
+          "notes",
+          "duration_minutes",
+          "created_at",
+          "adherence"
+        ],
+        "title": "FinishedSessionOut",
+        "description": "A closed session, plus how much of its prescription it covered.\n\nWidening the finished session rather than wrapping it: the one field the UI reads off this\nresponse is ``duration_minutes``, and every other caller treats it as a session. ``adherence``\nis additive, so nothing that worked before has to change to keep working."
       },
       "FrequencyItem": {
         "properties": {
@@ -3485,7 +4010,7 @@
           "unit_pref"
         ],
         "title": "MeUpdate",
-        "description": "Patch the current user's display preferences (Settings → units, docs/07)."
+        "description": "Patch the current user's display preferences (Settings \u2192 units, docs/07)."
       },
       "MetricResultOut": {
         "properties": {
@@ -3545,6 +4070,637 @@
         ],
         "title": "MetricResultOut",
         "description": "What a rebuild produced for one (exercise, metric)."
+      },
+      "PlannedItemOut": {
+        "properties": {
+          "planned": {
+            "$ref": "#/components/schemas/PlannedSetOut"
+          },
+          "exercise": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExerciseOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "is_completed": {
+            "type": "boolean",
+            "title": "Is Completed"
+          },
+          "completed_set": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SetOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "planned",
+          "exercise",
+          "is_completed",
+          "completed_set"
+        ],
+        "title": "PlannedItemOut",
+        "description": "A prescribed line with its movement and its completion state resolved."
+      },
+      "PlannedSessionCreate": {
+        "properties": {
+          "planned_sets": {
+            "items": {
+              "$ref": "#/components/schemas/PlannedSetCreate"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Planned Sets"
+          },
+          "performed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Performed At"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "client_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "planned_sets",
+          "performed_at"
+        ],
+        "title": "PlannedSessionCreate",
+        "description": "Create a session and its prescription in one transaction."
+      },
+      "PlannedSessionOut": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "performed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Performed At"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "planned_total": {
+            "type": "integer",
+            "title": "Planned Total"
+          },
+          "completed_count": {
+            "type": "integer",
+            "title": "Completed Count"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PlannedItemOut"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "performed_at",
+          "title",
+          "type",
+          "planned_total",
+          "completed_count",
+          "items"
+        ],
+        "title": "PlannedSessionOut",
+        "description": "A session's whole prescription, in the order it is meant to be performed."
+      },
+      "PlannedSetComplete": {
+        "properties": {
+          "weight_kg": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight Kg"
+          },
+          "reps": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reps"
+          },
+          "hold_seconds": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hold Seconds"
+          },
+          "rpe": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 10.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rpe"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "is_backfill": {
+            "type": "boolean",
+            "title": "Is Backfill",
+            "default": false
+          },
+          "client_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Key"
+          }
+        },
+        "type": "object",
+        "title": "PlannedSetComplete",
+        "description": "What was actually done against a prescribed line.\n\nNothing is defaulted from the targets: a range of 8\u201310 has no single right answer, and a plan\nrecording its own prescription as the result would make adherence a tautology."
+      },
+      "PlannedSetCreate": {
+        "properties": {
+          "exercise_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Exercise Id"
+          },
+          "set_number": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Set Number",
+            "default": 1
+          },
+          "order_index": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Index"
+          },
+          "target_reps_min": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Reps Min"
+          },
+          "target_reps_max": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Reps Max"
+          },
+          "target_weight_kg": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Weight Kg"
+          },
+          "target_rpe": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 10.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Rpe"
+          },
+          "target_hold_seconds": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Hold Seconds"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "client_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "exercise_id"
+        ],
+        "title": "PlannedSetCreate",
+        "description": "One line of a prescription. Every target is optional; a line with none is 'do a set'."
+      },
+      "PlannedSetOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "exercise_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Exercise Id"
+          },
+          "set_number": {
+            "type": "integer",
+            "title": "Set Number"
+          },
+          "order_index": {
+            "type": "integer",
+            "title": "Order Index"
+          },
+          "target_reps_min": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Reps Min"
+          },
+          "target_reps_max": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Reps Max"
+          },
+          "target_weight_kg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Weight Kg"
+          },
+          "target_rpe": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Rpe"
+          },
+          "target_hold_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Hold Seconds"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "completed_set_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed Set Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "session_id",
+          "exercise_id",
+          "set_number",
+          "order_index",
+          "target_reps_min",
+          "target_reps_max",
+          "target_weight_kg",
+          "target_rpe",
+          "target_hold_seconds",
+          "notes",
+          "completed_set_id",
+          "created_at"
+        ],
+        "title": "PlannedSetOut",
+        "description": "One prescribed line, as stored."
+      },
+      "PlannedSetUpdate": {
+        "properties": {
+          "set_number": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Set Number"
+          },
+          "order_index": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Index"
+          },
+          "target_reps_min": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Reps Min"
+          },
+          "target_reps_max": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Reps Max"
+          },
+          "target_weight_kg": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Weight Kg"
+          },
+          "target_rpe": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 10.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Rpe"
+          },
+          "target_hold_seconds": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Hold Seconds"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "clear_notes": {
+            "type": "boolean",
+            "title": "Clear Notes",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "PlannedSetUpdate",
+        "description": "Patch one prescribed line; only supplied fields change.\n\n``exercise_id`` and ``session_id`` are not here on purpose: moving a line to another movement\nor another day is not an edit of that line, it is a different line."
+      },
+      "PlannedSetsCreate": {
+        "properties": {
+          "planned_sets": {
+            "items": {
+              "$ref": "#/components/schemas/PlannedSetCreate"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Planned Sets"
+          }
+        },
+        "type": "object",
+        "required": [
+          "planned_sets"
+        ],
+        "title": "PlannedSetsCreate",
+        "description": "Append lines to a session's prescription \u2014 all or nothing."
       },
       "PrCreate": {
         "properties": {
@@ -3610,7 +4766,7 @@
           "achieved_at"
         ],
         "title": "PrCreate",
-        "description": "A hand-entered record. ``unit`` is not a field — it follows from ``pr_type``."
+        "description": "A hand-entered record. ``unit`` is not a field \u2014 it follows from ``pr_type``."
       },
       "PrDeleteOut": {
         "properties": {
@@ -3630,7 +4786,7 @@
           "standing"
         ],
         "title": "PrDeleteOut",
-        "description": "What is standing after a record was withdrawn — ``null`` if nothing supports one."
+        "description": "What is standing after a record was withdrawn \u2014 ``null`` if nothing supports one."
       },
       "PrHistoryItem": {
         "properties": {
@@ -3727,7 +4883,7 @@
           "deleted_at"
         ],
         "title": "PrHistoryItem",
-        "description": "One entry in a record's chronology, auto or manual.\n\nThis replaces the ``SetOut`` this endpoint used to return. A manual record has no set behind\nit, so a set-shaped payload could not represent one — which is precisely why manual entries\nwere missing from PR history before."
+        "description": "One entry in a record's chronology, auto or manual.\n\nThis replaces the ``SetOut`` this endpoint used to return. A manual record has no set behind\nit, so a set-shaped payload could not represent one \u2014 which is precisely why manual entries\nwere missing from PR history before."
       },
       "PrHistoryOut": {
         "properties": {
@@ -4251,6 +5407,11 @@
           "dry_run": {
             "type": "boolean",
             "title": "Dry Run"
+          },
+          "planned_count": {
+            "type": "integer",
+            "title": "Planned Count",
+            "default": 0
           }
         },
         "type": "object",
@@ -4261,7 +5422,7 @@
           "dry_run"
         ],
         "title": "SessionDeleteOut",
-        "description": "What a delete did — or, with ``dry_run``, would have done."
+        "description": "What a delete did \u2014 or, with ``dry_run``, would have done."
       },
       "SessionDetailOut": {
         "properties": {
@@ -4476,6 +5637,57 @@
           "created_at"
         ],
         "title": "SessionOut"
+      },
+      "SessionProgressOut": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Session Id"
+          },
+          "adherence": {
+            "$ref": "#/components/schemas/AdherenceOut"
+          },
+          "logged_total": {
+            "type": "integer",
+            "title": "Logged Total"
+          },
+          "exercises": {
+            "items": {
+              "$ref": "#/components/schemas/ExerciseProgressOut"
+            },
+            "type": "array",
+            "title": "Exercises"
+          },
+          "remaining_exercises": {
+            "items": {
+              "$ref": "#/components/schemas/ExerciseProgressOut"
+            },
+            "type": "array",
+            "title": "Remaining Exercises"
+          },
+          "next_up": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlannedItemOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "adherence",
+          "logged_total",
+          "exercises",
+          "remaining_exercises",
+          "next_up"
+        ],
+        "title": "SessionProgressOut",
+        "description": "Planned vs done for one session, plus what to do next."
       },
       "SessionUpdate": {
         "properties": {

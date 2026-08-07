@@ -14,6 +14,7 @@ from app.models import (
     Exercise,
     ExerciseSet,
     PersonalRecord,
+    PlannedSet,
     Skill,
     SkillProgress,
     User,
@@ -168,5 +169,100 @@ async def test_global_and_custom_can_share_a_slug(db_session: AsyncSession) -> N
 async def test_unit_pref_check_constraint(db_session: AsyncSession) -> None:
     db_session.add(User(email="bad@example.com", google_sub="sub-bad", unit_pref="stone"))
 
+    with pytest.raises(IntegrityError):
+        await db_session.flush()
+
+
+async def test_planned_set_roundtrip_and_defaults(db_session: AsyncSession) -> None:
+    """A prescribed line stores its targets, defaults its position, and starts uncompleted."""
+    user = await _make_user(db_session)
+    exercise = Exercise(slug="front-squat", name="Front Squat")
+    db_session.add(exercise)
+    await db_session.flush()
+    session = WorkoutSession(user_id=user.id, performed_at=_utcnow())
+    db_session.add(session)
+    await db_session.flush()
+
+    planned = PlannedSet(
+        user_id=user.id,
+        session_id=session.id,
+        exercise_id=exercise.id,
+        set_number=2,
+        target_reps_min=8,
+        target_reps_max=10,
+        target_weight_kg=Decimal("62.5"),
+        target_rpe=Decimal("8"),
+    )
+    db_session.add(planned)
+    await db_session.flush()
+
+    planned_id = planned.id
+    db_session.expire_all()
+
+    fetched = (
+        await db_session.execute(select(PlannedSet).where(PlannedSet.id == planned_id))
+    ).scalar_one()
+    assert (fetched.target_reps_min, fetched.target_reps_max) == (8, 10)
+    assert fetched.target_weight_kg == Decimal("62.5")
+    assert fetched.order_index == 0  # server default
+    assert fetched.completed_set_id is None
+    assert fetched.deleted_at is None
+
+
+async def test_planned_set_rep_range_check_constraint(db_session: AsyncSession) -> None:
+    """A range that counts down is refused by the database, not only by the service."""
+    user = await _make_user(db_session, email="ranges@example.com")
+    exercise = Exercise(slug="press", name="Press")
+    db_session.add(exercise)
+    await db_session.flush()
+    session = WorkoutSession(user_id=user.id, performed_at=_utcnow())
+    db_session.add(session)
+    await db_session.flush()
+
+    db_session.add(
+        PlannedSet(
+            user_id=user.id,
+            session_id=session.id,
+            exercise_id=exercise.id,
+            set_number=1,
+            target_reps_min=10,
+            target_reps_max=8,
+        )
+    )
+    with pytest.raises(IntegrityError):
+        await db_session.flush()
+
+
+async def test_one_logged_set_can_complete_only_one_planned_set(
+    db_session: AsyncSession,
+) -> None:
+    """Otherwise a session could report more work completed than was ever logged."""
+    user = await _make_user(db_session, email="claims@example.com")
+    exercise = Exercise(slug="dip", name="Dip")
+    db_session.add(exercise)
+    await db_session.flush()
+    session = WorkoutSession(user_id=user.id, performed_at=_utcnow())
+    db_session.add(session)
+    await db_session.flush()
+    logged = ExerciseSet(
+        user_id=user.id,
+        session_id=session.id,
+        exercise_id=exercise.id,
+        set_number=1,
+        reps=10,
+    )
+    db_session.add(logged)
+    await db_session.flush()
+
+    for number in (1, 2):
+        db_session.add(
+            PlannedSet(
+                user_id=user.id,
+                session_id=session.id,
+                exercise_id=exercise.id,
+                set_number=number,
+                completed_set_id=logged.id,
+            )
+        )
     with pytest.raises(IntegrityError):
         await db_session.flush()

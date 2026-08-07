@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import clock, errors
 from app.core.slugs import slugify
-from app.models import Exercise, ExerciseSet, ExerciseSlugAlias
+from app.models import Exercise, ExerciseSet, ExerciseSlugAlias, PlannedSet
 
 _CUSTOM_SOURCE = "custom"
 
@@ -369,6 +369,10 @@ class ExerciseDeletion:
     set_count: int
     reassigned_to: Exercise | None
     dry_run: bool
+    #: Prescribed lines naming this exercise. They block the delete for the same reason sets do —
+    #: and `planned_sets.exercise_id` has no `ON DELETE`, so an orphan would surface later as a
+    #: foreign-key violation inside `purge_deleted` rather than here.
+    planned_count: int = 0
 
 
 async def delete_custom(
@@ -380,13 +384,23 @@ async def delete_custom(
     dry_run: bool = False,
     at: datetime | None = None,
 ) -> ExerciseDeletion:
-    """Soft-delete a custom exercise, refusing to orphan the sets that reference it.
+    """Soft-delete a custom exercise, refusing to orphan anything that references it.
 
     A set whose exercise has vanished is worse than no deletion at all: it still carries weight
     and reps into volume totals but can no longer say what movement it was. So either there are no
     sets, or ``reassign_to`` names the exercise they should belong to — in which case they are
     moved first and the records for **both** movements are recomputed, because the sets have left
     one chronology and joined another.
+
+    **Prescribed lines count the same way.** A ``planned_sets`` row naming this exercise is a
+    reference too, and deleting the movement out from under a plan leaves a prescription nobody can
+    read. They are moved with the sets under ``reassign_to``, which is also the honest answer for a
+    coach who swapped a movement out of the catalog — the plan still says do something.
+
+    This guards the *live* rows, which is all it can: a line deleted separately still references the
+    exercise and still would not survive a hard delete. That case is handled where it actually bites
+    — ``corrections.purge`` skips an exercise anything still points at, rather than attempting the
+    ``DELETE`` and raising a foreign-key violation.
     """
     exercise = await _owned_custom(db, user_id, exercise_id)
 
@@ -399,6 +413,15 @@ async def delete_custom(
             )
         )
     ).scalar_one()
+    live_planned = (
+        await db.execute(
+            select(func.count()).where(
+                PlannedSet.exercise_id == exercise_id,
+                PlannedSet.user_id == user_id,
+                PlannedSet.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one()
 
     target: Exercise | None = None
     if reassign_to is not None:
@@ -406,18 +429,27 @@ async def delete_custom(
             raise errors.validation("reassign_to must be a different exercise")
         target = await get(db, user_id=user_id, exercise_id=reassign_to)
 
-    if live_sets and target is None:
+    if (live_sets or live_planned) and target is None:
+        held = []
+        if live_sets:
+            held.append(f"{live_sets} logged set{'s' if live_sets != 1 else ''}")
+        if live_planned:
+            held.append(f"{live_planned} planned set{'s' if live_planned != 1 else ''}")
         raise errors.validation(
-            f"'{exercise.name}' still has {live_sets} logged "
-            f"set{'s' if live_sets != 1 else ''}. Pass reassign_to to move them to another "
-            f"exercise first — deleting it would leave them with no movement.",
+            f"'{exercise.name}' still has {' and '.join(held)}. Pass reassign_to to move them to "
+            f"another exercise first — deleting it would leave them with no movement.",
             exercise_id=str(exercise_id),
             set_count=live_sets,
+            planned_count=live_planned,
         )
 
     if dry_run:
         return ExerciseDeletion(
-            exercise=exercise, set_count=live_sets, reassigned_to=target, dry_run=True
+            exercise=exercise,
+            set_count=live_sets,
+            reassigned_to=target,
+            dry_run=True,
+            planned_count=live_planned,
         )
 
     if target is not None and live_sets:
@@ -435,6 +467,21 @@ async def delete_custom(
             .all()
         ):
             row.exercise_id = target.id
+    if target is not None and live_planned:
+        for planned in (
+            (
+                await db.execute(
+                    select(PlannedSet).where(
+                        PlannedSet.exercise_id == exercise_id,
+                        PlannedSet.user_id == user_id,
+                        PlannedSet.deleted_at.is_(None),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        ):
+            planned.exercise_id = target.id
 
     exercise.deleted_at = at or clock.now()
     await db.flush()
@@ -446,5 +493,9 @@ async def delete_custom(
         await sets_service.recompute(db, user_id=user_id, exercise_id=target.id)
 
     return ExerciseDeletion(
-        exercise=exercise, set_count=live_sets, reassigned_to=target, dry_run=False
+        exercise=exercise,
+        set_count=live_sets,
+        reassigned_to=target,
+        dry_run=False,
+        planned_count=live_planned,
     )

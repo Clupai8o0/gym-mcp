@@ -172,8 +172,10 @@ async def test_finish_stamps_ended_at_and_duration(db_session: AsyncSession) -> 
         session_id=session.id,
         ended_at=started + timedelta(minutes=47),
     )
-    assert finished.ended_at == started + timedelta(minutes=47)
-    assert finished.duration_minutes == 47
+    assert finished.session.ended_at == started + timedelta(minutes=47)
+    assert finished.session.duration_minutes == 47
+    # Nothing was prescribed, so there is no adherence to report — not 0%, not 100%.
+    assert finished.adherence.planned_total == 0 and finished.adherence.percent is None
 
 
 async def test_finish_is_idempotent(db_session: AsyncSession) -> None:
@@ -188,8 +190,8 @@ async def test_finish_is_idempotent(db_session: AsyncSession) -> None:
     second = await sessions.finish_session(
         db_session, user_id=user.id, session_id=session.id, ended_at=started + timedelta(hours=5)
     )
-    assert second.ended_at == first.ended_at
-    assert second.duration_minutes == 30
+    assert second.session.ended_at == first.session.ended_at
+    assert second.session.duration_minutes == 30
 
 
 async def test_finish_someone_elses_session_is_not_found(db_session: AsyncSession) -> None:
@@ -406,8 +408,8 @@ class TestDurationOwnership:
         session.ended_at = None
         await db_session.flush()
         finished = await sessions.finish_session(db_session, user_id=user.id, session_id=session.id)
-        assert finished.duration_minutes == 52, "the caller's own number, not wall-clock"
-        assert finished.ended_at is not None
+        assert finished.session.duration_minutes == 52, "the caller's own number, not wall-clock"
+        assert finished.session.ended_at is not None
 
     async def test_a_derived_duration_is_clamped(self, db_session: AsyncSession) -> None:
         """A session left open for days would otherwise record 136,070 minutes."""
@@ -420,14 +422,14 @@ class TestDurationOwnership:
 
         finished = await sessions.finish_session(db_session, user_id=user.id, session_id=session.id)
         ceiling = int(sessions.MAX_DERIVED_DURATION.total_seconds() // 60)
-        assert finished.duration_minutes == ceiling
+        assert finished.session.duration_minutes == ceiling
 
     async def test_a_normal_derived_duration_is_untouched(self, db_session: AsyncSession) -> None:
         user = await make_user(db_session)
         started = datetime.now(tz=UTC) - timedelta(minutes=75)
         session = await sessions.create(db_session, user_id=user.id, performed_at=started)
         finished = await sessions.finish_session(db_session, user_id=user.id, session_id=session.id)
-        assert 74 <= (finished.duration_minutes or 0) <= 76
+        assert 74 <= (finished.session.duration_minutes or 0) <= 76
 
 
 class TestUpdateRepairsASession:

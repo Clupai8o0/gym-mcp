@@ -122,6 +122,7 @@ async def delete_exercise(
             ExerciseOut.model_validate(result.reassigned_to) if result.reassigned_to else None
         ),
         dry_run=result.dry_run,
+        planned_count=result.planned_count,
     )
 
 

@@ -187,6 +187,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sessions/planned": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Plan Session
+         * @description Create a session and its prescription in one transaction — a workout not yet performed.
+         */
+        post: operations["plan_session_api_sessions_planned_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{session_id}/planned": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Planned Session
+         * @description A session's prescription in performance order, each line with its completion state.
+         */
+        get: operations["get_planned_session_api_sessions__session_id__planned_get"];
+        put?: never;
+        /**
+         * Add Planned Sets
+         * @description Append lines to an existing session's prescription, transactionally.
+         */
+        post: operations["add_planned_sets_api_sessions__session_id__planned_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{session_id}/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Session Progress
+         * @description Planned vs completed for one session, what is left, and what is next.
+         */
+        get: operations["session_progress_api_sessions__session_id__progress_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sessions/{session_id}": {
         parameters: {
             query?: never;
@@ -220,7 +284,7 @@ export interface paths {
         put?: never;
         /**
          * Finish Session
-         * @description Close a session and store its duration. Idempotent — finishing a finished one is a no-op.
+         * @description Close a session, store its duration, and report adherence. Idempotent.
          */
         post: operations["finish_session_api_sessions__session_id__finish_post"];
         delete?: never;
@@ -288,6 +352,54 @@ export interface paths {
         head?: never;
         /** Update Set */
         patch: operations["update_set_api_sets__set_id__patch"];
+        trace?: never;
+    };
+    "/api/planned-sets/{planned_set_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Planned Set
+         * @description Soft-delete one prescribed line.
+         *
+         *     Returns the removed row rather than 204, for the same reason `DELETE /api/sets/{id}` does: the
+         *     caller gets the id to `restore` with. A set already logged against the line stays exactly where
+         *     it is and simply becomes off-plan work.
+         */
+        delete: operations["delete_planned_set_api_planned_sets__planned_set_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Planned Set
+         * @description Correct one line of a prescription. Never touches what was logged against it.
+         */
+        patch: operations["update_planned_set_api_planned_sets__planned_set_id__patch"];
+        trace?: never;
+    };
+    "/api/planned-sets/{planned_set_id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete Planned Set
+         * @description Log what was actually done against a prescribed line; normal PR detection applies.
+         */
+        post: operations["complete_planned_set_api_planned_sets__planned_set_id__complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/prs": {
@@ -757,6 +869,35 @@ export interface components {
             session: components["schemas"]["SessionOut"] | null;
             /** Set Count */
             set_count: number;
+            /**
+             * Planned Total
+             * @default 0
+             */
+            planned_total?: number;
+            /**
+             * Completed Count
+             * @default 0
+             */
+            completed_count?: number;
+        };
+        /**
+         * AdherenceOut
+         * @description How much of the prescription was done.
+         *
+         *     ``percent`` is ``null`` when nothing was prescribed — neither 0 nor 100 is true of a session
+         *     that had no plan, and both would read as a judgement about one.
+         */
+        AdherenceOut: {
+            /** Planned Total */
+            planned_total: number;
+            /** Completed Count */
+            completed_count: number;
+            /** Pending Count */
+            pending_count: number;
+            /** Off Plan Count */
+            off_plan_count: number;
+            /** Percent */
+            percent: number | null;
         };
         /**
          * AuthorizationServerMetadata
@@ -806,6 +947,14 @@ export interface components {
             token_endpoint_auth_method?: string | null;
             /** Scope */
             scope?: string | null;
+        };
+        /**
+         * CompletedPlannedSetOut
+         * @description The line that was just satisfied, and the set that did it (with its PR verdict).
+         */
+        CompletedPlannedSetOut: {
+            planned: components["schemas"]["PlannedSetOut"];
+            logged: components["schemas"]["LoggedSetOut"];
         };
         /** ConnectionListOut */
         ConnectionListOut: {
@@ -870,6 +1019,11 @@ export interface components {
             reassigned_to: components["schemas"]["ExerciseOut"] | null;
             /** Dry Run */
             dry_run: boolean;
+            /**
+             * Planned Count
+             * @default 0
+             */
+            planned_count?: number;
         };
         /**
          * ExerciseDetailOut
@@ -977,6 +1131,19 @@ export interface components {
             is_custom?: boolean;
         };
         /**
+         * ExerciseProgressOut
+         * @description One movement's share of the prescription.
+         */
+        ExerciseProgressOut: {
+            exercise: components["schemas"]["ExerciseOut"];
+            /** Planned */
+            planned: number;
+            /** Completed */
+            completed: number;
+            /** Remaining */
+            remaining: number;
+        };
+        /**
          * ExerciseSetGroup
          * @description One exercise and its sets within a session detail.
          */
@@ -1011,6 +1178,42 @@ export interface components {
             secondary_muscles?: string[] | null;
             /** Instructions */
             instructions?: string[] | null;
+        };
+        /**
+         * FinishedSessionOut
+         * @description A closed session, plus how much of its prescription it covered.
+         *
+         *     Widening the finished session rather than wrapping it: the one field the UI reads off this
+         *     response is ``duration_minutes``, and every other caller treats it as a session. ``adherence``
+         *     is additive, so nothing that worked before has to change to keep working.
+         */
+        FinishedSessionOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string | null;
+            /** Type */
+            type: string | null;
+            /**
+             * Performed At
+             * Format: date-time
+             */
+            performed_at: string;
+            /** Ended At */
+            ended_at: string | null;
+            /** Notes */
+            notes: string | null;
+            /** Duration Minutes */
+            duration_minutes: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            adherence: components["schemas"]["AdherenceOut"];
         };
         /** FrequencyItem */
         FrequencyItem: {
@@ -1125,6 +1328,204 @@ export interface components {
             entries: number;
             /** Changed */
             changed: boolean;
+        };
+        /**
+         * PlannedItemOut
+         * @description A prescribed line with its movement and its completion state resolved.
+         */
+        PlannedItemOut: {
+            planned: components["schemas"]["PlannedSetOut"];
+            exercise: components["schemas"]["ExerciseOut"] | null;
+            /** Is Completed */
+            is_completed: boolean;
+            completed_set: components["schemas"]["SetOut"] | null;
+        };
+        /**
+         * PlannedSessionCreate
+         * @description Create a session and its prescription in one transaction.
+         */
+        PlannedSessionCreate: {
+            /** Planned Sets */
+            planned_sets: components["schemas"]["PlannedSetCreate"][];
+            /**
+             * Performed At
+             * Format: date-time
+             */
+            performed_at: string;
+            /** Title */
+            title?: string | null;
+            /** Type */
+            type?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Client Key */
+            client_key?: string | null;
+        };
+        /**
+         * PlannedSessionOut
+         * @description A session's whole prescription, in the order it is meant to be performed.
+         */
+        PlannedSessionOut: {
+            /**
+             * Session Id
+             * Format: uuid
+             */
+            session_id: string;
+            /**
+             * Performed At
+             * Format: date-time
+             */
+            performed_at: string;
+            /** Title */
+            title: string | null;
+            /** Type */
+            type: string | null;
+            /** Planned Total */
+            planned_total: number;
+            /** Completed Count */
+            completed_count: number;
+            /** Items */
+            items: components["schemas"]["PlannedItemOut"][];
+        };
+        /**
+         * PlannedSetComplete
+         * @description What was actually done against a prescribed line.
+         *
+         *     Nothing is defaulted from the targets: a range of 8–10 has no single right answer, and a plan
+         *     recording its own prescription as the result would make adherence a tautology.
+         */
+        PlannedSetComplete: {
+            /** Weight Kg */
+            weight_kg?: number | null;
+            /** Reps */
+            reps?: number | null;
+            /** Hold Seconds */
+            hold_seconds?: number | null;
+            /** Rpe */
+            rpe?: number | null;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Is Backfill
+             * @default false
+             */
+            is_backfill?: boolean;
+            /** Client Key */
+            client_key?: string | null;
+        };
+        /**
+         * PlannedSetCreate
+         * @description One line of a prescription. Every target is optional; a line with none is 'do a set'.
+         */
+        PlannedSetCreate: {
+            /**
+             * Exercise Id
+             * Format: uuid
+             */
+            exercise_id: string;
+            /**
+             * Set Number
+             * @default 1
+             */
+            set_number?: number;
+            /** Order Index */
+            order_index?: number | null;
+            /** Target Reps Min */
+            target_reps_min?: number | null;
+            /** Target Reps Max */
+            target_reps_max?: number | null;
+            /** Target Weight Kg */
+            target_weight_kg?: number | null;
+            /** Target Rpe */
+            target_rpe?: number | null;
+            /** Target Hold Seconds */
+            target_hold_seconds?: number | null;
+            /** Notes */
+            notes?: string | null;
+            /** Client Key */
+            client_key?: string | null;
+        };
+        /**
+         * PlannedSetOut
+         * @description One prescribed line, as stored.
+         */
+        PlannedSetOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Session Id
+             * Format: uuid
+             */
+            session_id: string;
+            /**
+             * Exercise Id
+             * Format: uuid
+             */
+            exercise_id: string;
+            /** Set Number */
+            set_number: number;
+            /** Order Index */
+            order_index: number;
+            /** Target Reps Min */
+            target_reps_min: number | null;
+            /** Target Reps Max */
+            target_reps_max: number | null;
+            /** Target Weight Kg */
+            target_weight_kg: number | null;
+            /** Target Rpe */
+            target_rpe: number | null;
+            /** Target Hold Seconds */
+            target_hold_seconds: number | null;
+            /** Notes */
+            notes: string | null;
+            /** Completed Set Id */
+            completed_set_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * PlannedSetUpdate
+         * @description Patch one prescribed line; only supplied fields change.
+         *
+         *     ``exercise_id`` and ``session_id`` are not here on purpose: moving a line to another movement
+         *     or another day is not an edit of that line, it is a different line.
+         */
+        PlannedSetUpdate: {
+            /** Set Number */
+            set_number?: number | null;
+            /** Order Index */
+            order_index?: number | null;
+            /** Target Reps Min */
+            target_reps_min?: number | null;
+            /** Target Reps Max */
+            target_reps_max?: number | null;
+            /** Target Weight Kg */
+            target_weight_kg?: number | null;
+            /** Target Rpe */
+            target_rpe?: number | null;
+            /** Target Hold Seconds */
+            target_hold_seconds?: number | null;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Clear Notes
+             * @default false
+             */
+            clear_notes?: boolean;
+        };
+        /**
+         * PlannedSetsCreate
+         * @description Append lines to a session's prescription — all or nothing.
+         */
+        PlannedSetsCreate: {
+            /** Planned Sets */
+            planned_sets: components["schemas"]["PlannedSetCreate"][];
         };
         /**
          * PrCreate
@@ -1403,6 +1804,11 @@ export interface components {
             exercises_recalculated: number;
             /** Dry Run */
             dry_run: boolean;
+            /**
+             * Planned Count
+             * @default 0
+             */
+            planned_count?: number;
         };
         /**
          * SessionDetailOut
@@ -1475,6 +1881,25 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /**
+         * SessionProgressOut
+         * @description Planned vs done for one session, plus what to do next.
+         */
+        SessionProgressOut: {
+            /**
+             * Session Id
+             * Format: uuid
+             */
+            session_id: string;
+            adherence: components["schemas"]["AdherenceOut"];
+            /** Logged Total */
+            logged_total: number;
+            /** Exercises */
+            exercises: components["schemas"]["ExerciseProgressOut"][];
+            /** Remaining Exercises */
+            remaining_exercises: components["schemas"]["ExerciseProgressOut"][];
+            next_up: components["schemas"]["PlannedItemOut"] | null;
         };
         /**
          * SessionUpdate
@@ -2180,6 +2605,136 @@ export interface operations {
             };
         };
     };
+    plan_session_api_sessions_planned_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlannedSessionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlannedSessionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_planned_session_api_sessions__session_id__planned_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlannedSessionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_planned_sets_api_sessions__session_id__planned_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlannedSetsCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlannedSessionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    session_progress_api_sessions__session_id__progress_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionProgressOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_session_api_sessions__session_id__get: {
         parameters: {
             query?: never;
@@ -2297,7 +2852,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SessionOut"];
+                    "application/json": components["schemas"]["FinishedSessionOut"];
                 };
             };
             /** @description Validation Error */
@@ -2434,6 +2989,107 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LoggedSetOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_planned_set_api_planned_sets__planned_set_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                planned_set_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlannedSetOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_planned_set_api_planned_sets__planned_set_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                planned_set_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlannedSetUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlannedSetOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    complete_planned_set_api_planned_sets__planned_set_id__complete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                planned_set_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlannedSetComplete"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompletedPlannedSetOut"];
                 };
             };
             /** @description Validation Error */

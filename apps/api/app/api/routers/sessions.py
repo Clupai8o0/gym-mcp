@@ -9,8 +9,15 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser, Pagination, current_user, get_db, pagination
+from app.schemas.plans import (
+    PlannedSessionCreate,
+    PlannedSessionOut,
+    PlannedSetsCreate,
+    SessionProgressOut,
+)
 from app.schemas.sessions import (
     ActiveSessionOut,
+    FinishedSessionOut,
     SessionCreate,
     SessionDeleteOut,
     SessionDetailOut,
@@ -21,7 +28,7 @@ from app.schemas.sessions import (
     SessionWithSetsOut,
 )
 from app.schemas.sets import LoggedSetOut, LoggedSetsOut, SetBulkCreate, SetCreate
-from app.services import sessions, sets
+from app.services import plans, sessions, sets
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
@@ -73,7 +80,10 @@ async def get_active_session(
     if active is None:
         return ActiveSessionOut(session=None, set_count=0)
     return ActiveSessionOut(
-        session=SessionOut.model_validate(active.session), set_count=active.set_count
+        session=SessionOut.model_validate(active.session),
+        set_count=active.set_count,
+        planned_total=active.planned_total,
+        completed_count=active.completed_count,
     )
 
 
@@ -98,6 +108,64 @@ async def create_session_with_sets(
         session=SessionOut.model_validate(session),
         sets=[LoggedSetOut.from_logged(row) for row in logged],
     )
+
+
+@router.post("/planned", response_model=PlannedSessionOut, status_code=201)
+async def plan_session(
+    payload: PlannedSessionCreate,
+    cu: CurrentUser = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+) -> PlannedSessionOut:
+    """Create a session and its prescription in one transaction — a workout not yet performed."""
+    body = payload.model_dump()
+    drafts = body.pop("planned_sets")
+    plan = await plans.plan_session(
+        db,
+        user_id=cu.user_id,
+        drafts=[plans.PlannedSetDraft(**draft) for draft in drafts],
+        **body,
+    )
+    return PlannedSessionOut.from_plan(plan)
+
+
+@router.get("/{session_id}/planned", response_model=PlannedSessionOut)
+async def get_planned_session(
+    session_id: uuid.UUID,
+    cu: CurrentUser = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+) -> PlannedSessionOut:
+    """A session's prescription in performance order, each line with its completion state."""
+    plan = await plans.get_plan(db, user_id=cu.user_id, session_id=session_id)
+    return PlannedSessionOut.from_plan(plan)
+
+
+@router.post("/{session_id}/planned", response_model=PlannedSessionOut, status_code=201)
+async def add_planned_sets(
+    session_id: uuid.UUID,
+    payload: PlannedSetsCreate,
+    cu: CurrentUser = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+) -> PlannedSessionOut:
+    """Append lines to an existing session's prescription, transactionally."""
+    await plans.add_planned_sets(
+        db,
+        user_id=cu.user_id,
+        session_id=session_id,
+        drafts=[plans.PlannedSetDraft(**draft.model_dump()) for draft in payload.planned_sets],
+    )
+    plan = await plans.get_plan(db, user_id=cu.user_id, session_id=session_id)
+    return PlannedSessionOut.from_plan(plan)
+
+
+@router.get("/{session_id}/progress", response_model=SessionProgressOut)
+async def session_progress(
+    session_id: uuid.UUID,
+    cu: CurrentUser = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+) -> SessionProgressOut:
+    """Planned vs completed for one session, what is left, and what is next."""
+    report = await plans.progress(db, user_id=cu.user_id, session_id=session_id)
+    return SessionProgressOut.from_progress(report)
 
 
 @router.get("/{session_id}", response_model=SessionDetailOut)
@@ -146,18 +214,19 @@ async def delete_session(
         set_count=result.set_count,
         exercises_recalculated=result.exercises_recalculated,
         dry_run=result.dry_run,
+        planned_count=result.planned_count,
     )
 
 
-@router.post("/{session_id}/finish", response_model=SessionOut)
+@router.post("/{session_id}/finish", response_model=FinishedSessionOut)
 async def finish_session(
     session_id: uuid.UUID,
     cu: CurrentUser = Depends(current_user),
     db: AsyncSession = Depends(get_db),
-) -> SessionOut:
-    """Close a session and store its duration. Idempotent — finishing a finished one is a no-op."""
-    session = await sessions.finish_session(db, user_id=cu.user_id, session_id=session_id)
-    return SessionOut.model_validate(session)
+) -> FinishedSessionOut:
+    """Close a session, store its duration, and report adherence. Idempotent."""
+    finished = await sessions.finish_session(db, user_id=cu.user_id, session_id=session_id)
+    return FinishedSessionOut.from_finished(finished)
 
 
 @router.post("/{session_id}/sets/bulk", response_model=LoggedSetsOut, status_code=201)

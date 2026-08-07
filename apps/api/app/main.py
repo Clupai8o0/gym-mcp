@@ -22,6 +22,7 @@ from app.api.routers import (
     exercises,
     health,
     me,
+    planned_sets,
     prs,
     sessions,
     sets,
@@ -47,6 +48,7 @@ _ROUTERS = (
     exercises,
     sessions,
     sets,
+    planned_sets,
     prs,
     skills,
     analytics,
@@ -78,7 +80,7 @@ def create_app() -> FastAPI:
 
     # ``lifespan`` runs the MCP Streamable-HTTP session manager (its task group backs every
     # ``/mcp`` request); see app/mcp/asgi.py.
-    application = FastAPI(title="Tempo API", version="0.5.0", lifespan=mcp_lifespan)
+    application = FastAPI(title="Tempo API", version="0.6.0", lifespan=mcp_lifespan)
 
     application.add_middleware(
         CORSMiddleware,

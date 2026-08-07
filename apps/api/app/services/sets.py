@@ -120,6 +120,19 @@ async def _assert_exercise_visible(
         raise errors.not_found("Exercise not found")
 
 
+async def assert_exercise_visible(
+    db: AsyncSession, user_id: uuid.UUID, exercise_id: uuid.UUID
+) -> None:
+    """Public wrapper: raise ``not_found`` unless the user can see this exercise.
+
+    Sibling services that write rows *referencing* an exercise — ``services/plans``, which
+    prescribes them — need exactly the visibility rule set logging already uses. Sharing the one
+    implementation is what stops a plan being writable against a movement a set could not be
+    logged against.
+    """
+    await _assert_exercise_visible(db, user_id, exercise_id)
+
+
 def _require_measurement(
     weight_kg: Decimal | None, reps: int | None, hold_seconds: int | None
 ) -> None:

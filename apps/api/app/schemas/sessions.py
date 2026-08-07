@@ -10,10 +10,11 @@ from pydantic import BaseModel, Field
 
 from app.schemas.common import ORMModel, PageMeta
 from app.schemas.exercises import ExerciseOut
+from app.schemas.plans import AdherenceOut
 from app.schemas.sets import LoggedSetOut, SetCreate, SetOut
 
 if TYPE_CHECKING:
-    from app.services.sessions import SessionDetail
+    from app.services.sessions import FinishedSession, SessionDetail
 
 
 class SessionOut(ORMModel):
@@ -50,6 +51,13 @@ class ActiveSessionOut(BaseModel):
     #: Required, not defaulted — the response always carries it, and a client that has to
     #: cope with it being absent would need a fallback that can never fire.
     set_count: int
+    #: Lines in this session's prescription; ``0`` on an ordinary unplanned workout. A session
+    #: that exists with a plan and nothing logged yet is still the active session, and this is
+    #: what tells a client there is something to work through.
+    planned_total: int = 0
+    #: How many of those lines have been completed. Not the same as ``set_count``, which counts
+    #: everything logged including work nobody prescribed.
+    completed_count: int = 0
 
 
 class ExerciseSetGroup(BaseModel):
@@ -121,6 +129,25 @@ class SessionUpdate(BaseModel):
     clear_notes: bool = False
 
 
+class FinishedSessionOut(SessionOut):
+    """A closed session, plus how much of its prescription it covered.
+
+    Widening the finished session rather than wrapping it: the one field the UI reads off this
+    response is ``duration_minutes``, and every other caller treats it as a session. ``adherence``
+    is additive, so nothing that worked before has to change to keep working.
+    """
+
+    adherence: AdherenceOut
+
+    @classmethod
+    def from_finished(cls, finished: FinishedSession) -> FinishedSessionOut:
+        base = SessionOut.model_validate(finished.session)
+        return cls(
+            **base.model_dump(),
+            adherence=AdherenceOut.from_adherence(finished.adherence),
+        )
+
+
 class SessionDeleteOut(BaseModel):
     """What a delete did — or, with ``dry_run``, would have done."""
 
@@ -128,3 +155,6 @@ class SessionDeleteOut(BaseModel):
     set_count: int
     exercises_recalculated: int
     dry_run: bool
+    #: Prescribed lines removed with the session. They go unconditionally — a plan cannot outlive
+    #: the workout it prescribes — so this is a report, not a decision.
+    planned_count: int = 0

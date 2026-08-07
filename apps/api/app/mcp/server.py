@@ -38,9 +38,16 @@ from app.schemas.exercises import (
     ExerciseListOut,
     ExerciseOut,
 )
+from app.schemas.plans import (
+    CompletedPlannedSetOut,
+    PlannedSessionOut,
+    PlannedSetOut,
+    SessionProgressOut,
+)
 from app.schemas.prs import PrDeleteOut, PrHistoryItem, PrHistoryOut, PrListOut, PrOut
 from app.schemas.sessions import (
     ActiveSessionOut,
+    FinishedSessionOut,
     SessionDeleteOut,
     SessionDetailOut,
     SessionListOut,
@@ -59,6 +66,7 @@ from app.services import (
     corrections,
     exercises,
     integrity,
+    plans,
     prs,
     sessions,
     sets,
@@ -297,6 +305,12 @@ async def get_active_session() -> dict[str, Any]:
 
     ``set_count`` is how many sets have been logged into it so far — enough to answer "how is
     the workout going?" without fetching the whole session.
+
+    A session that carries a **prescription** and nothing logged yet is still the active one:
+    ``planned_total`` says how many sets are written down and ``completed_count`` how many have
+    been done, so "you have a session waiting, 12 sets, none started" is one call. Both are ``0``
+    on an ordinary unplanned workout. A plan dated for a later day is not active until its time
+    arrives — use ``get_planned_session`` to read it before then.
     """
     async with runtime.open_session() as db:
         active = await sessions.get_active_session(db, user_id=runtime.current_user_id())
@@ -304,7 +318,10 @@ async def get_active_session() -> dict[str, Any]:
             ActiveSessionOut(session=None, set_count=0)
             if active is None
             else ActiveSessionOut(
-                session=SessionOut.model_validate(active.session), set_count=active.set_count
+                session=SessionOut.model_validate(active.session),
+                set_count=active.set_count,
+                planned_total=active.planned_total,
+                completed_count=active.completed_count,
             )
         )
         return out.model_dump(mode="json")
@@ -312,13 +329,19 @@ async def get_active_session() -> dict[str, Any]:
 
 @mcp.tool()
 async def finish_session(session_id: uuid.UUID) -> dict[str, Any]:
-    """End a workout, storing its duration (needs the write scope). Safe to call twice."""
+    """End a workout, storing its duration (needs the write scope). Safe to call twice.
+
+    The result carries an ``adherence`` block: how many prescribed sets there were, how many were
+    completed, how many were logged that nobody prescribed, and the percentage. ``percent`` is
+    ``null`` when the session had no plan — a workout nobody wrote down has no adherence, and both
+    0% and 100% would be claims about a plan that never existed.
+    """
     runtime.require_scope(WRITE_SCOPE)
     async with runtime.open_session() as db:
-        row = await sessions.finish_session(
+        finished = await sessions.finish_session(
             db, user_id=runtime.current_user_id(), session_id=session_id
         )
-        return SessionOut.model_validate(row).model_dump(mode="json")
+        return FinishedSessionOut.from_finished(finished).model_dump(mode="json")
 
 
 @mcp.tool()
@@ -549,6 +572,10 @@ async def delete_session(
     rows while deleting the header would leave sets counting toward records under a workout that
     no longer happened.
 
+    Any **prescription** goes with the session whatever ``cascade`` says, and is only reported as
+    ``planned_count``: a plan cannot outlive the workout it prescribes, so there is nothing to
+    decide. ``cascade`` guards logged training, which is the part you might want to keep.
+
     ``dry_run`` reports what would change and changes nothing. Soft, so ``restore`` undoes it.
     """
     runtime.require_scope(WRITE_SCOPE)
@@ -565,6 +592,7 @@ async def delete_session(
             set_count=result.set_count,
             exercises_recalculated=result.exercises_recalculated,
             dry_run=result.dry_run,
+            planned_count=result.planned_count,
         ).model_dump(mode="json")
 
 
@@ -622,10 +650,11 @@ async def delete_custom_exercise(
 ) -> dict[str, Any]:
     """Remove one of the user's own custom exercises (needs the write scope).
 
-    Refuses while sets still reference it — and says how many — unless ``reassign_to`` names the
-    exercise those sets should belong to, in which case they are moved first and the records for
-    both movements are recalculated. A set with no movement is worse than no deletion: it still
-    carries weight and reps into your totals but can no longer say what it was.
+    Refuses while sets or **prescribed lines** still reference it — and says how many of each —
+    unless ``reassign_to`` names the exercise they should belong to, in which case they are moved
+    first and the records for both movements are recalculated. A set with no movement is worse than
+    no deletion: it still carries weight and reps into your totals but can no longer say what it
+    was. A plan line with no movement is a prescription that cannot be read.
 
     ``dry_run`` reports what would change and changes nothing. Soft, so ``restore`` undoes it.
     """
@@ -650,7 +679,258 @@ async def delete_custom_exercise(
                 ExerciseOut.model_validate(result.reassigned_to) if result.reassigned_to else None
             ),
             dry_run=result.dry_run,
+            planned_count=result.planned_count,
         ).model_dump(mode="json")
+
+
+# ── Planning (prescribed sets) ───────────────────────────────────────────────────────
+async def _planned_drafts(db: Any, user_id: uuid.UUID, raw: list[dict[str, Any]]) -> list[Any]:
+    """Turn the wire shape into ``plans.PlannedSetDraft``s, resolving each ``exercise`` reference.
+
+    Named per element rather than positionally so a failure says *which* line of the plan is
+    wrong: a coach pasting a twelve-set week wants "planned_sets[7]", not "an exercise was not
+    found".
+    """
+    drafts: list[Any] = []
+    for index, item in enumerate(raw):
+        ref = item.get("exercise")
+        if not ref:
+            raise errors.validation(f"planned_sets[{index}]: 'exercise' is required")
+        row = await exercises.resolve_ref(db, user_id=user_id, ref=str(ref))
+        drafts.append(
+            plans.PlannedSetDraft(
+                exercise_id=row.id,
+                set_number=int(item.get("set_number", 1)),
+                order_index=item.get("order_index"),
+                target_reps_min=item.get("target_reps_min"),
+                target_reps_max=item.get("target_reps_max"),
+                target_weight_kg=item.get("target_weight_kg"),
+                target_rpe=item.get("target_rpe"),
+                target_hold_seconds=item.get("target_hold_seconds"),
+                notes=item.get("notes"),
+                client_key=item.get("client_key"),
+            )
+        )
+    return drafts
+
+
+@mcp.tool()
+async def plan_session(
+    performed_at: datetime,
+    planned_sets: list[dict[str, Any]],
+    title: str | None = None,
+    type: str | None = None,
+    notes: str | None = None,
+    client_key: str | None = None,
+) -> dict[str, Any]:
+    """Write a workout **before** it happens: the session and its prescription, one transaction.
+
+    Needs the write scope. This is how a coach-written plan lives in Tempo. Nothing here counts as
+    training: a prescribed set is an instruction, and volume, tonnage, frequency and personal
+    records are computed from logged sets only. A planned set enters the numbers when — and only
+    when — ``complete_planned_set`` records what was actually done.
+
+    Each element of ``planned_sets`` takes: ``exercise`` (UUID, slug or name), ``set_number``
+    (which set of that movement, 1-based), and any of ``target_reps_min``, ``target_reps_max``,
+    ``target_weight_kg``, ``target_rpe``, ``target_hold_seconds``, ``notes``, ``order_index``,
+    ``client_key``. **Every target is optional** — a line with none of them says "do a set of this",
+    which is a real instruction. A rep range is min+max; the same number twice is a fixed count.
+
+    Order matters and is preserved: leave ``order_index`` out and the lines are numbered as given,
+    so a superset written A1, B1, A2, B2 reads back that way.
+
+    ``performed_at`` may be in the future — that is the normal case for a plan. A session dated
+    later is not "in progress" and will not be returned by ``get_active_session`` until its start
+    time arrives; read it with ``get_planned_session`` before then.
+
+    ``client_key`` makes the whole call idempotent: a retry returns the existing session and its
+    prescription rather than writing the workout twice.
+    """
+    runtime.require_scope(WRITE_SCOPE)
+    async with runtime.open_session() as db:
+        user_id = runtime.current_user_id()
+        drafts = await _planned_drafts(db, user_id, planned_sets)
+        plan = await plans.plan_session(
+            db,
+            user_id=user_id,
+            performed_at=performed_at,
+            drafts=drafts,
+            title=title,
+            type=type,
+            notes=notes,
+            client_key=client_key,
+        )
+        return PlannedSessionOut.from_plan(plan).model_dump(mode="json")
+
+
+@mcp.tool()
+async def add_planned_sets(
+    session_id: uuid.UUID, planned_sets: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Append lines to a session's prescription (needs the write scope).
+
+    Same element shape as ``plan_session``. All or nothing: one bad line aborts the call and names
+    its index rather than leaving a half-written plan, whose missing half would read as a coach's
+    decision. New lines are appended after whatever the session already holds.
+
+    Returns the session's full prescription as it now stands.
+    """
+    runtime.require_scope(WRITE_SCOPE)
+    async with runtime.open_session() as db:
+        user_id = runtime.current_user_id()
+        drafts = await _planned_drafts(db, user_id, planned_sets)
+        await plans.add_planned_sets(db, user_id=user_id, session_id=session_id, drafts=drafts)
+        plan = await plans.get_plan(db, user_id=user_id, session_id=session_id)
+        return PlannedSessionOut.from_plan(plan).model_dump(mode="json")
+
+
+@mcp.tool()
+async def get_planned_session(session_id: uuid.UUID) -> dict[str, Any]:
+    """The prescription for a session, in performance order, with each line's completion state.
+
+    Every item carries ``is_completed`` and, when it is done, the ``completed_set`` that satisfied
+    it. Completion is read from the logged set still being there — delete that set and the line
+    goes back to outstanding, with nothing to re-sync.
+
+    Returns an empty ``items`` list for a session nobody planned, rather than an error.
+    """
+    async with runtime.open_session() as db:
+        plan = await plans.get_plan(db, user_id=runtime.current_user_id(), session_id=session_id)
+        return PlannedSessionOut.from_plan(plan).model_dump(mode="json")
+
+
+@mcp.tool()
+async def update_planned_set(
+    planned_set_id: uuid.UUID,
+    set_number: int | None = None,
+    order_index: int | None = None,
+    target_reps_min: int | None = None,
+    target_reps_max: int | None = None,
+    target_weight_kg: float | None = None,
+    target_rpe: float | None = None,
+    target_hold_seconds: int | None = None,
+    notes: str | None = None,
+    clear_notes: bool = False,
+) -> dict[str, Any]:
+    """Correct one line of a prescription (needs the write scope). Only what you pass changes.
+
+    To empty the note, pass ``clear_notes=true`` — omitting an argument already means "leave alone".
+
+    Editing a line that has already been completed changes **nothing about the logged set**: the
+    plan said one thing, the training was another, and rewriting the log to match the plan is the
+    one edit this tool will never make. Correct what was lifted with ``update_set`` instead.
+
+    To move a line to a different movement or a different day, delete it and add the one you meant
+    — that is a different prescription, not a correction to this one.
+    """
+    runtime.require_scope(WRITE_SCOPE)
+    changes: dict[str, Any] = {
+        key: value
+        for key, value in (
+            ("set_number", set_number),
+            ("order_index", order_index),
+            ("target_reps_min", target_reps_min),
+            ("target_reps_max", target_reps_max),
+            ("target_weight_kg", target_weight_kg),
+            ("target_rpe", target_rpe),
+            ("target_hold_seconds", target_hold_seconds),
+            ("notes", notes),
+        )
+        if value is not None
+    }
+    if not changes and not clear_notes:
+        raise errors.validation(
+            "Pass at least one field to change: set_number, order_index, target_reps_min, "
+            "target_reps_max, target_weight_kg, target_rpe, target_hold_seconds, notes, "
+            "or clear_notes"
+        )
+    async with runtime.open_session() as db:
+        planned = await plans.update_planned_set(
+            db,
+            user_id=runtime.current_user_id(),
+            planned_set_id=planned_set_id,
+            changes=changes,
+            clear_notes=clear_notes,
+        )
+        return PlannedSetOut.model_validate(planned).model_dump(mode="json")
+
+
+@mcp.tool()
+async def delete_planned_set(planned_set_id: uuid.UUID) -> dict[str, Any]:
+    """Remove one line from a prescription (needs the write scope).
+
+    Soft — ``restore(entity_type="planned_set", ...)`` brings it back. A set already logged against
+    the line is **not** deleted with it; it stays in the log and simply becomes off-plan work.
+    Taking a line out of the plan is a statement about the plan, not a retraction of training that
+    happened; for that, use ``delete_set``.
+    """
+    runtime.require_scope(WRITE_SCOPE)
+    async with runtime.open_session() as db:
+        removed = await plans.delete_planned_set(
+            db, user_id=runtime.current_user_id(), planned_set_id=planned_set_id
+        )
+        return PlannedSetOut.model_validate(removed).model_dump(mode="json")
+
+
+@mcp.tool()
+async def complete_planned_set(
+    planned_set_id: uuid.UUID,
+    weight_kg: float | None = None,
+    reps: int | None = None,
+    hold_seconds: int | None = None,
+    rpe: float | None = None,
+    notes: str | None = None,
+    is_backfill: bool = False,
+    client_key: str | None = None,
+) -> dict[str, Any]:
+    """Log what was actually done against a prescribed line, and link the two (write scope).
+
+    This writes a **real set** into the session — the same write ``log_set`` makes, with the same
+    PR detection — and records it against the plan. The result carries the set's ``pr`` verdict;
+    celebrate personal records exactly as you would for any other set.
+
+    **Pass what happened, not what was prescribed.** Nothing is defaulted from the targets: a range
+    of 8–10 has no single right answer, and a plan recording its own targets as results would make
+    adherence a number that agrees with the plan by construction. At least one of ``weight_kg``,
+    ``reps`` or ``hold_seconds`` is required, as for any set.
+
+    You do **not** have to work through the plan to log training: ``log_set`` still works for
+    anything nobody prescribed, and it is reported as off-plan rather than refused.
+
+    ``client_key`` makes the call idempotent — a retry returns the original set and the same link.
+    """
+    runtime.require_scope(WRITE_SCOPE)
+    async with runtime.open_session() as db:
+        completion = await plans.complete(
+            db,
+            user_id=runtime.current_user_id(),
+            planned_set_id=planned_set_id,
+            weight_kg=weight_kg,
+            reps=reps,
+            hold_seconds=hold_seconds,
+            rpe=rpe,
+            notes=notes,
+            is_backfill=is_backfill,
+            client_key=client_key,
+        )
+        return CompletedPlannedSetOut.from_completion(completion).model_dump(mode="json")
+
+
+@mcp.tool()
+async def session_progress(session_id: uuid.UUID) -> dict[str, Any]:
+    """How a session is going: planned vs completed, what is left, and what is next.
+
+    ``adherence`` carries the counts (``planned_total``, ``completed_count``, ``pending_count``,
+    ``off_plan_count``, ``percent``); ``exercises`` breaks it down per movement in plan order;
+    ``remaining_exercises`` is just those with work outstanding; ``next_up`` is the first line still
+    to do. ``percent`` is ``null`` when the session had no plan.
+
+    Safe on an unplanned workout — everything logged is reported as off-plan and ``next_up`` is
+    ``null``.
+    """
+    async with runtime.open_session() as db:
+        report = await plans.progress(db, user_id=runtime.current_user_id(), session_id=session_id)
+        return SessionProgressOut.from_progress(report).model_dump(mode="json")
 
 
 # ── Records ──────────────────────────────────────────────────────────────────────────
@@ -844,10 +1124,11 @@ async def verify_pr_integrity(exercise: str | None = None) -> dict[str, Any]:
 async def restore(entity_type: str, entity_id: uuid.UUID) -> dict[str, Any]:
     """Undo a soft delete (needs the write scope).
 
-    ``entity_type`` is one of ``session``, ``set``, ``exercise``, ``pr_history_entry`` — the id
-    alone cannot say which table it came from. Restoring a session brings back the sets that were
-    deleted *with* it, not ones deleted separately beforehand. Records are recalculated for
-    everything affected.
+    ``entity_type`` is one of ``session``, ``set``, ``exercise``, ``pr_history_entry``,
+    ``planned_set`` — the id alone cannot say which table it came from. Restoring a session brings
+    back the sets **and the prescribed lines** that were deleted *with* it, not ones deleted
+    separately beforehand. Records are recalculated for everything affected; a planned set has
+    nothing derived from it, so restoring one recalculates nothing.
     """
     runtime.require_scope(WRITE_SCOPE)
     async with runtime.open_session() as db:

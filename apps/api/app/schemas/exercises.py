@@ -91,3 +91,5 @@ class ExerciseDeleteOut(BaseModel):
     set_count: int
     reassigned_to: ExerciseOut | None
     dry_run: bool
+    #: Prescribed lines naming this exercise; they block the delete exactly as sets do.
+    planned_count: int = 0

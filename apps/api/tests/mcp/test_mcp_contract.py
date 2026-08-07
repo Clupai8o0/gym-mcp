@@ -9,6 +9,7 @@ is a real contract break, not test noise.
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -201,9 +202,23 @@ async def test_finish_session_then_rest_reads_it(
     with bound(db_session, seeded["user_id"]):
         finished = await server.finish_session(session_id=seeded["session_id"])
     assert finished["ended_at"] is not None and finished["duration_minutes"] is not None
+    # Finishing reports adherence. This session was logged without a plan, so there is nothing to
+    # adhere to — `percent` is null rather than 0 or 100, either of which would be a claim about a
+    # prescription that never existed.
+    assert finished["adherence"] == {
+        "planned_total": 0,
+        "completed_count": 0,
+        "pending_count": 0,
+        "off_plan_count": 2,
+        "percent": None,
+    }
 
     rest = await _rest(app_client, f"/api/sessions/{seeded['session_id']}")
-    assert {k: rest[k] for k in finished} == finished
+    # Projected onto the *session* fields: `adherence` is computed for the finish response and has
+    # no counterpart on the session detail, so comparing it against `rest` would be asking the
+    # wrong endpoint a question it was never meant to answer.
+    session_fields = {k: v for k, v in finished.items() if k != "adherence"}
+    assert {k: rest[k] for k in session_fields} == session_fields
     # …and the REST view of "active" agrees the workout is over.
     assert (await _rest(app_client, "/api/sessions/active"))["session"] is None
 
@@ -291,6 +306,113 @@ async def test_log_pr_unknown_exercise_is_a_clean_error(
         )
     assert caught.value.kind is ErrorKind.NOT_FOUND
     assert caught.value.status_code == 404
+
+
+# ── Planning parity: the prescription reads and writes identically on both surfaces ──
+async def test_plan_session_then_rest_reads_the_same_prescription(
+    app_client: AsyncClient, db_session: AsyncSession, seeded: dict[str, Any]
+) -> None:
+    with bound(db_session, seeded["user_id"]):
+        plan = await server.plan_session(
+            performed_at=_NOW + timedelta(days=2),
+            title="Tuesday — Upper",
+            type="upper",
+            planned_sets=[
+                {
+                    "exercise": "bench-press",  # the chat-identity rule applies here too
+                    "set_number": n,
+                    "target_reps_min": 5,
+                    "target_reps_max": 5,
+                    "target_weight_kg": 100,
+                }
+                for n in (1, 2, 3)
+            ],
+        )
+    assert plan["planned_total"] == 3 and plan["completed_count"] == 0
+
+    rest = await _rest(app_client, f"/api/sessions/{plan['session_id']}/planned")
+    assert rest == plan
+
+
+async def test_session_progress_matches_rest(
+    app_client: AsyncClient, db_session: AsyncSession, seeded: dict[str, Any]
+) -> None:
+    """The seeded session has two logged sets and no plan — the honest answer is 'nothing to
+    adhere to', not 0% or 100%."""
+    rest = await _rest(app_client, f"/api/sessions/{seeded['session_id']}/progress")
+    with bound(db_session, seeded["user_id"]):
+        mcp = await server.session_progress(session_id=seeded["session_id"])
+    assert mcp == rest
+    assert mcp["adherence"]["percent"] is None
+    assert mcp["adherence"]["off_plan_count"] == 2
+    assert mcp["next_up"] is None
+
+
+async def test_complete_planned_set_writes_a_real_set_rest_can_see(
+    app_client: AsyncClient, db_session: AsyncSession, seeded: dict[str, Any]
+) -> None:
+    """The one door between the plan and the data: it goes through `sets.log_set`, PRs and all."""
+    with bound(db_session, seeded["user_id"]):
+        plan = await server.add_planned_sets(
+            session_id=seeded["session_id"],
+            planned_sets=[{"exercise": "bench-press", "set_number": 3, "target_reps_min": 3}],
+        )
+        line_id = plan["items"][0]["planned"]["id"]
+        done = await server.complete_planned_set(
+            planned_set_id=uuid.UUID(line_id), weight_kg=95, reps=3
+        )
+
+    assert set(done) == {"planned", "logged"}
+    assert done["logged"]["pr"]["is_pr"] is True  # 95 kg beats the seeded 85 kg
+    assert done["planned"]["completed_set_id"] == done["logged"]["set"]["id"]
+
+    # REST sees the same set inside the session, and the same completion state on the plan.
+    detail = await _rest(app_client, f"/api/sessions/{seeded['session_id']}")
+    logged_ids = {row["id"] for group in detail["exercises"] for row in group["sets"]}
+    assert done["logged"]["set"]["id"] in logged_ids
+
+    rest_plan = await _rest(app_client, f"/api/sessions/{seeded['session_id']}/planned")
+    assert rest_plan["completed_count"] == 1
+    assert rest_plan["items"][0]["is_completed"] is True
+
+
+async def test_a_prescription_does_not_move_volume_or_records(
+    app_client: AsyncClient, db_session: AsyncSession, seeded: dict[str, Any]
+) -> None:
+    """The invariant, asserted across the surface a chat client actually uses."""
+    frm = (_NOW - timedelta(days=30)).isoformat()
+    to = (_NOW + timedelta(days=1)).isoformat()
+    before_volume = await _rest(app_client, "/api/analytics/volume", **{"from": frm, "to": to})
+    before_prs = await _rest(app_client, "/api/prs")
+
+    with bound(db_session, seeded["user_id"]):
+        await server.add_planned_sets(
+            session_id=seeded["session_id"],
+            planned_sets=[
+                {"exercise": "bench-press", "set_number": n, "target_weight_kg": 300}
+                for n in (3, 4, 5)
+            ],
+        )
+
+    assert await _rest(app_client, "/api/analytics/volume", **{"from": frm, "to": to}) == (
+        before_volume
+    )
+    assert await _rest(app_client, "/api/prs") == before_prs
+
+
+async def test_active_session_reports_the_plan_on_both_surfaces(
+    app_client: AsyncClient, db_session: AsyncSession, seeded: dict[str, Any]
+) -> None:
+    with bound(db_session, seeded["user_id"]):
+        await server.add_planned_sets(
+            session_id=seeded["session_id"],
+            planned_sets=[{"exercise": "bench-press", "set_number": 3}],
+        )
+        mcp = await server.get_active_session()
+    rest = await _rest(app_client, "/api/sessions/active")
+    assert mcp == rest
+    assert mcp["planned_total"] == 1 and mcp["completed_count"] == 0
+    assert mcp["set_count"] == 2, "logged sets and prescribed lines are different questions"
 
 
 async def test_update_skill_progress_then_rest_reads_it(

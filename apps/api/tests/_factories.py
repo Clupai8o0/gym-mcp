@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from app.models import Exercise, User, WorkoutSession
+from app.models import Exercise, PlannedSet, User, WorkoutSession
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -51,3 +51,34 @@ async def make_session(
     db.add(session)
     await db.flush()
     return session
+
+
+async def make_planned_set(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    session_id: uuid.UUID,
+    exercise_id: uuid.UUID,
+    set_number: int = 1,
+    order_index: int = 0,
+    target_reps_min: int | None = None,
+    target_reps_max: int | None = None,
+    target_weight_kg: float | None = None,
+) -> PlannedSet:
+    """A prescribed line written straight to the row, bypassing the service.
+
+    For tests that need a plan to *exist* rather than to exercise how one is written.
+    """
+    planned = PlannedSet(
+        user_id=user_id,
+        session_id=session_id,
+        exercise_id=exercise_id,
+        set_number=set_number,
+        order_index=order_index,
+        target_reps_min=target_reps_min,
+        target_reps_max=target_reps_max,
+        target_weight_kg=target_weight_kg,
+    )
+    db.add(planned)
+    await db.flush()
+    return planned

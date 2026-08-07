@@ -25,6 +25,7 @@ from app.models.personal_record import (
     PersonalRecord,
     PersonalRecordHistory,
 )
+from app.models.planned_set import PlannedSet
 from app.models.skill import Skill, SkillProgress
 from app.models.user import User
 from app.models.workout_session import WorkoutSession
@@ -43,6 +44,7 @@ __all__ = [
     "PR_UNITS",
     "PersonalRecord",
     "PersonalRecordHistory",
+    "PlannedSet",
     "Skill",
     "SkillProgress",
     "User",

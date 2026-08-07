@@ -67,7 +67,18 @@ async def test_tools_list_exposes_the_full_surface(
     } <= names
     assert {"recalculate_prs", "verify_pr_integrity", "restore", "purge_deleted"} <= names
     assert {"log_sets", "log_session_with_sets"} <= names  # transactional bulk writes
-    assert len(names) == 33
+    # Planning: a session can now carry a prescription written before it happens, kept in its own
+    # table so nothing in it reaches volume, tonnage, frequency or PR detection.
+    assert {
+        "plan_session",
+        "add_planned_sets",
+        "get_planned_session",
+        "update_planned_set",
+        "delete_planned_set",
+        "complete_planned_set",
+        "session_progress",
+    } <= names
+    assert len(names) == 40
 
 
 async def test_guide_resource_readable(mcp_http: AsyncClient, db_session: AsyncSession) -> None:
@@ -220,7 +231,7 @@ async def test_the_runtime_boots_lazily_under_the_real_lifespan(db_session: Asyn
 
                 authorized = await rpc(client, "tools/list", token=tokens.access_token)
                 assert authorized.status_code == 200
-                assert len(authorized.json()["result"]["tools"]) == 33
+                assert len(authorized.json()["result"]["tools"]) == 40
                 assert server.session_manager_started()
 
                 # Second call: the transport is already up, nothing restarts.
