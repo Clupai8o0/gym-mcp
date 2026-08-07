@@ -10,26 +10,30 @@ each phase with what shipped, DoD evidence, and any decisions.
 
 ## External prerequisites (needed before later phases)
 
-Not required for Phase 0. Track here so they don't become surprise blockers:
+**All five are provisioned, and production has been live at the custom domains since 2026-08-01.**
+This block used to read as five open blockers, which was true when it was written and badly stale
+by the time anyone read it. What follows is the state verified on **2026-08-07**, with each claim
+stopping where the evidence does.
 
-- [ ] Neon project (primary + preview branch); pooled + unpooled URLs — **Phase 1**
-      ⤷ schema + migrations are built and verified (against local Postgres 16); **provisioning the
-      Neon project and setting `DATABASE_URL`/`DATABASE_URL_UNPOOLED` is the one remaining step** —
-      then `pnpm --filter @tempo/api migrate` applies `head` to the Neon branch.
-- [ ] Google OAuth client (OIDC) + authorized redirect URI — **Phase 3**
-      ⤷ the full auth/OAuth stack is **built and verified** (Google calls stubbed in tests);
-      **provisioning a real Google OIDC client and setting `GOOGLE_CLIENT_ID/SECRET` +
-      `SESSION_SIGNING_KEY`/`TOKEN_HASH_PEPPER`** is the remaining external step before the
-      **live claude.ai handshake** + the **human security sign-off** can be recorded.
-- [ ] Vercel Blob store (`BLOB_READ_WRITE_TOKEN`) — **Phase 4**
-      ⤷ the illustration pipeline (seed + batch + on-demand endpoint) is **built and verified**
-      (OpenAI/Blob calls stubbed in tests); **setting `BLOB_READ_WRITE_TOKEN`** is the remaining
-      external step before art can be generated/stored.
-- [ ] OpenAI API key + GPT Image 2 access — **Phase 4**
-      ⤷ **setting `OPENAI_API_KEY`** (+ optional `OPENAI_IMAGE_*` tunables) is the other remaining
-      step; together with the Blob token it unblocks the **design sign-off** (exemplars) and the
-      **full batch run** — the two outstanding Phase 4 gate items.
-- [ ] Domain / DNS for `tempo.clupai.com` + `api.tempo.clupai.com`; two Vercel projects — **Phase 10**
+- [x] Neon project (primary + preview branch); pooled + unpooled URLs — **Phase 1**
+      ⤷ `DATABASE_URL` + `DATABASE_URL_UNPOOLED` are set in the `tempo-api` production
+      environment. **The schema head running there was not verifiable from a dev machine** (Vercel
+      holds the credentials), so migrating production stays a deliberate, separate step ahead of
+      any deploy that adds a table. See "Deploying a migration" under Phase 10.
+- [x] Google OAuth client (OIDC) + authorized redirect URI — **Phase 3**
+      ⤷ `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` set in production;
+      both OAuth well-knowns serve 200 and unauthenticated `POST /mcp` returns 401 with the
+      RFC 9728 `WWW-Authenticate` PRM pointer. **The human security sign-off on `docs/05` is still
+      unrecorded, and production shipped without it** — that is a deviation from the Phase 3 gate,
+      not a satisfied one.
+- [x] Vercel Blob store (`BLOB_READ_WRITE_TOKEN`) — **Phase 4**
+- [x] OpenAI API key + GPT Image 2 access — **Phase 4**
+      ⤷ `OPENAI_API_KEY` + `OPENAI_IMAGE_MODEL` set in production. Whether the **full batch** has
+      been run against them is not recorded anywhere and was not verified here; the Phase 4 gate
+      items below are therefore left as they stand.
+- [x] Domain / DNS for `tempo.clupai.com` + `api.tempo.clupai.com`; two Vercel projects — **Phase 10**
+      ⤷ `tempo-web` + `tempo-api` under `clupai8o0s-projects`, root directories `apps/web` and
+      `apps/api`. Both custom domains serve 200.
 
 ---
 
@@ -598,7 +602,31 @@ Not required for Phase 0. Track here so they don't become surprise blockers:
   sliding tab indicator (motion audit #7), since that would reintroduce `motion` to every authed page's
   initial bundle, undoing the perf work; the snap indicators stay. New web deps: **none** (sharp for the
   icon script is transitive via Next). No new env, **no migration**.
-## Phase 10 — Deploy & launch — NOT STARTED
+## Phase 10 — Deploy & launch — IN PROGRESS (production is live; the phase gates are unrecorded)
+
+> **Written retroactively on 2026-08-07.** The phase was executed without a STATUS entry, so this
+> section is assembled from what is verifiable against the running system rather than from a build
+> log. It said `NOT STARTED` for the six days production was serving traffic.
+
+- **Projects:** `tempo-web` and `tempo-api` (org `clupai8o0s-projects`), created 2026-08-01, root
+  directories `apps/web` and `apps/api`, Node 24.x, Next.js preset on web.
+- **Deploys are CLI-driven** (`vercel --prod` from the app directory), **not** triggered by a push
+  to `main`. Pushing ships nothing on its own; that is worth knowing before assuming a merge went
+  out.
+- **Verified live 2026-08-07:** `https://tempo.clupai.com/` 200; `https://api.tempo.clupai.com/api/health`
+  200 with `{"status":"ok","db":"ok"}`; both OAuth well-knowns 200; unauthenticated `POST /mcp`
+  401 carrying `WWW-Authenticate: Bearer resource_metadata=…, error="invalid_token"`.
+- **Deploying a migration — migrate first, then deploy.** Since 11N the API queries `planned_sets`
+  from `analytics.frequency`, `sessions.get_active_session`, `exercises.delete_custom` and
+  `corrections.purge`, so shipping that code before its table exists returns 500s on the dashboard
+  rather than degrading. The step is manual and cannot be run from a dev machine that lacks the
+  production credential: `alembic upgrade head` against `DATABASE_URL_UNPOOLED` (unpooled, per
+  `01`), *then* `vercel --prod`.
+- **Outstanding (every phase gate that production shipped past):**
+  - [ ] **Human security review of `docs/05` signed off** — the Phase 3 gate, still unrecorded.
+  - [ ] claude.ai connector added over the live handshake + a tool call confirmed (Phase 5 gate).
+  - [ ] Antigravity frontend review across the deployed surfaces (Phases 6-9 gate).
+  - [ ] Lighthouse/CWV budget check (LCP<2.5s, CLS<0.1, INP<200ms) on the deployed app.
 
 ## Phase 11A — Session lifecycle — DONE (verified on local Postgres)
 - **Branch/PR:** `phase-11a-session-lifecycle` (cut from `phase-9-polish` HEAD, since Phase 9 is not
@@ -1258,3 +1286,272 @@ Not required for Phase 0. Track here so they don't become surprise blockers:
 - **Notes:** `openapi-typescript` now runs with `--default-non-nullable false` — it was marking
   request-body fields that merely have a *default* as required, which is right for a response and
   wrong for a request.
+
+## Phase 11M — Landing-page illustrations — DONE (**Antigravity frontend-review gate outstanding**)
+
+> **Gap noticed while writing this:** the preceding landing-page rebuild (`1ddb5a8`, 2026-08-02)
+> never got a STATUS section of its own. This entry covers the illustrations added on top of it;
+> that commit is still unrecorded here.
+
+> **Revised 2026-08-07, before this ever landed.** Shown in a browser, two of the things described
+> below were cut: **the hero figure** and **the scroll-linked wipe entrance on every drawing**. The
+> entry has been rewritten to describe what ships rather than what was built, with the cuts noted
+> where they were. Both were removed on sight rather than after a rubric pass, which is the whole
+> argument for rendering a page before writing its DoD.
+
+- **Branch/PR:** committed to `main` on 2026-08-07. Touches `apps/web/app/(marketing)/page.tsx` +
+  `page.module.css`, adds `apps/web/components/marketing/illustrations/`,
+  `apps/web/public/illustrations/` (17 assets) and
+  `apps/web/scripts/build-illustration-masks.mjs`.
+
+- **Scope:** four illustrated moments. The original five opened with a bar at the hang and closed
+  with the same bar overhead, so scrolling the page read as one rep. **The hero figure was cut**,
+  which costs that arc: the page no longer opens on a figure, and the lockout above the sign-in
+  button now rhymes with nothing earlier. Worth revisiting as a whole rather than by putting the
+  same drawing back.
+  - **Hero — CUT.** A lifter standing with a loaded bar, in the right margin the headline was
+    never going to use, drawn quiet (`color-mix(in oklab, var(--text) 30%, var(--bg))`) so it
+    could not compete with a 68px headline. In place it read as a figure parked beside the copy
+    rather than as part of it. The hero is now type on the ridge field alone.
+    `public/illustrations/lifter-{ink,accent}.webp` are **kept but unreferenced** — the raw
+    generation they were cut from was deliberately never committed, so deleting the masks would
+    make the figure unrecoverable without regenerating the source.
+  - **Library band** — a six-cell contact sheet (squat, pull-up, bench, plank, kettlebell swing,
+    row) in the same hairline cells the library grid uses. The only place on the page where
+    "over eight hundred, illustrated, all one style" is *shown* rather than asserted.
+  - **Logging band** — sat on the end of a bench between sets, phone in hand. Every other figure
+    is mid-effort; this is the thirty seconds the product is actually used in, which is the claim
+    the band makes. The accent moves to the phone, because here the implement is the log.
+  - **Steps 01–03** — `RecordMark`: a record two bars long after signing in, five after a first
+    session, nine and still growing by the third. The steps drawn as what they produce.
+  - **Final CTA** — the overhead lockout, directly above the sign-in button.
+
+- **How the art is built and why it is masks, not pictures:**
+  - Generated with **Gemini 3 Pro Image** against the catalog's own style lock (docs/06 §style),
+    deliberately: the landing page should preview the real library, so marketing art and the 800
+    exercise illustrations read as one hand. Prompts are recorded in the script.
+  - Two problems forced the pipeline. **(1)** The generator does not emit alpha — asked for a
+    transparent background it *paints* a checkerboard as real grey pixels, so the cut-out comes
+    from luminance, with the threshold read off each image's own border (the fake checkerboard
+    came out near-black on some and mid-grey on others). **(2)** A finished picture would
+    hard-code white lines, which vanish on the light theme. So each drawing is split by chroma
+    into **two alpha masks** — body and implement — which the page paints with `--ill-ink` and
+    `--accent`. Colour comes from tokens at render time, which is the only way one asset is
+    correct on a near-black canvas *and* on white, and what lets the hero figure be quieter than
+    the same figure in a card.
+  - Raw generations are **not committed**: the baked checkerboard is high-entropy noise that does
+    not compress, so ten 1024px PNGs are ~5 MB even lossless against **200 KB** for every mask
+    they produce. The prompts are the provenance instead — the same convention the catalog
+    pipeline uses (store the prompt, not the intermediate).
+
+- **Motion: none. CUT.** The drawings are static; a figure is simply there when its section is.
+  - What was removed: a scroll-linked **wipe** built as a moving gradient in a second mask layer,
+    `mask-composite: intersect`, uncovering each figure from the feet up (a `view()` timeline
+    below the fold, one 700ms run on load for the hero). It stood in for the stroke-by-stroke
+    draw a raster cannot do. The resting state was already the visible one, so removing it took
+    the `@property`, the `@supports` block and the keyframes out and left the base masks
+    untouched.
+  - **Kept as a note because it will bite again:** in that CSS the gradient had to be **first** in
+    the mask list. `mask-composite` describes how a layer combines with the layers *beneath* it,
+    so with the drawing listed first the operator never applies, the two masks union, and the
+    gradient's full rectangle paints as a solid block of ink. It cost an hour to find. The code is
+    gone; the trap is not.
+  - `Reveal` (the section-level entrance) is **unaffected** — the cut was the drawings' own
+    animation, not the page's.
+
+- **DoD evidence (re-run after the two cuts):**
+  - `tsc --noEmit`, `eslint .`, `prettier --check` all clean. **`next build` clean and `/` is
+    still `○ (Static)`** — every illustration is a server component and there is now no motion at
+    all, so no client JS was added to the landing page.
+  - The served page and stylesheet were checked over HTTP, not just the source: `/` returns **zero
+    references to `lifter`**, and no `ill-wipe`, `mask-composite` or `animation-timeline` survives
+    in any emitted CSS chunk. The other four drawings still resolve their masks.
+  - Verified in a real browser at 1300px in **dark and light**, and at **390px** (contact sheet
+    goes two-up below 420px). *The pre-cut pass also checked the hero figure dropping out below
+    1100px; that breakpoint no longer exists.*
+  - `scripts/build-illustration-masks.mjs` re-run from the sources reproduces all 17 committed
+    masks at identical dimensions. Two of those 17 (`lifter-*`) are now unreferenced by the page.
+
+- **Notes / decisions:**
+  - A first pass hand-authored the figures as inline SVG (for the stroke draw-on and free
+    theming). It was replaced: generated art is markedly better anatomically, and the mask split
+    recovers the theming the SVG had. The stroke draw is the one thing genuinely lost.
+  - **`RecordMark` stays SVG.** It is a chart, not a figure — nine hairlines whose exact heights
+    carry the meaning — so vector is smaller, sharper, and worth reading in the source.
+  - **Open question for review:** the contact sheet borrows the library card's hairline frame, so
+    it reads a little like a screenshot of the library. It is more defensible now that the art is
+    made to the catalog spec by the same class of model, but whether the real catalog images exist
+    in production is not recorded anywhere (the keys are set; the batch run is unlogged). Dropping
+    the frames is a one-line change in `MovementSheet.module.css` if review wants the weaker claim.
+  - **The hero and the wipe were both cut on sight** (see the revision note at the top). Neither
+    survived its first real render, and both had DoD evidence written for them beforehand. The
+    lesson is cheap and repeatable: render the page, then write the entry.
+
+## Phase 11N — Planned (prescribed) sets — DONE
+- **Branch/PR:** committed and pushed to `main` on 2026-08-07. **Deploying this requires running
+  migration `0008` against production Neon first** — see "Deploying a migration" under Phase 10.
+- **The gap it closes:** a session could only hold sets that had **already happened**, so a
+  coach-written plan had nowhere to live. The only way to express "5×5 at 100 kg on Tuesday" was to
+  log five sets nobody had done — which is a lie the moment anything reads volume, tonnage or
+  records. Tempo could log training and correct it, but it could not be *told what to do*.
+
+- **Migration `0008_planned_sets`** — **one new table, nothing altered.** No column was added to
+  `exercise_sets` and no existing query changed, and that is the design rather than a coincidence:
+  volume, tonnage, frequency and PR detection read `exercise_sets` and nothing else, so a
+  prescription in its own table cannot reach them. An `is_planned` flag would instead have made six
+  aggregate queries each responsible for the invariant, and the first one to forget it would credit
+  a lifter with work they were only told to do.
+  - `completed_set_id → exercise_sets(id) **on delete set null**`, never cascade: removing a plan
+    line must not remove the training it recorded, and `purge_deleted` has to be able to free a
+    set's storage without tripping over the row that named it.
+  - `planned_sets_completed_set_uidx` (unique, partial): one logged set satisfies at most one line,
+    so a session can never report more completed than was ever logged.
+  - `order_index` is separate from `set_number` because `set_number` cannot order a superset —
+    A1, B1, A2, B2 are all "set 1" or "set 2" *of their own exercise*.
+  - `deleted_at` + `client_key` follow the `0007` conventions, so planning inherits soft delete,
+    `restore` and retry-idempotency with no second mechanism.
+
+- **`services/plans`** — the only writer of the table, holding four rules:
+  - **A prescription is never training.** `complete` is the single door across, and it writes
+    through `services/sets.log_set` — the same call the log button makes, same PR detection, same
+    `client_key` guard — rather than a second write path that could drift from it.
+  - **Completion is derived, not stored.** A line is done while the set it names is *live*, so
+    `delete_set` reopens it with no second write and no way for the two to disagree; a soft-deleted
+    set can never read as adherence.
+  - **What you did is never assumed from what was prescribed.** A range of 8–10 has no single right
+    answer, and a plan recording its own targets as results would make adherence a number that
+    agrees with the plan by construction. The error names the line: *"prescribed as: 8-10 reps @ 60 kg"*.
+  - **Off-plan work is never blocked.** Nothing gates `log_set`; `session_progress` reports it as
+    `off_plan_count`. A tool that refuses training because nobody wrote it down first is worse than
+    no plan at all.
+
+- **Session lifecycle (a live hazard planning created).** `plan_session` is the first thing in Tempo
+  that dates a session **ahead of now**, and the D31 lifecycle only ever looked backwards: both
+  staleness clauses in `get_active_session` measure a *negative* age for a future date, so a plan for
+  next Tuesday passed every "still live" test and — ordered newest-first — sorted **above** the
+  workout actually under way and took its place, for (days until the plan + 12 h). `SCHEDULING_SKEW`
+  (5 min, for clock skew) is the fix: past it a session is scheduled, neither returned as active nor
+  swept as abandoned, and it becomes active on its own once its start passes. See **D36**.
+
+- **7 new MCP tools, each with a REST twin** (33 → **40**; lockstep is a guardrail, not a
+  preference): `plan_session`, `add_planned_sets`, `get_planned_session`, `update_planned_set`,
+  `delete_planned_set`, `complete_planned_set`, `session_progress`. `openapi.json` **38 → 43 paths**
+  (API version 0.5.0 → 0.6.0); `apps/web/lib/api-types.ts` regenerated.
+  - `finish_session` now returns `FinishedSession(session, adherence)` from the **service**, not
+    from each adapter — one place the number comes from, so REST and MCP cannot report different
+    things. The response widens `SessionOut` with `adherence` rather than wrapping it, so the one
+    field the web UI reads (`duration_minutes`) is untouched.
+  - `get_active_session` carries `planned_total` + `completed_count` beside `set_count`. They are
+    different questions: `set_count` is everything logged, on-plan or not.
+  - `restore` gained a fifth entity type, `planned_set`; `purge_deleted` purges it first.
+
+- **Found by adversarial review, fixed before this entry was written** (34 agents over six lenses;
+  every finding was independently re-run by a verifier told to refute it, and the ones below are
+  what survived — each now has a regression test named after the failure, not the fix):
+  - **`analytics.frequency` counted a workout you had only planned.** It counts `workout_sessions`
+    rows, not sets, so it is the *one* arm of requirement 1 that a separate table does not hold on
+    its own — planning Mon/Wed/Fri ahead of time reported three sessions trained while volume was
+    `[]` and `list_prs()` was empty. It now skips a session that holds a prescription and no live
+    set. An unplanned empty session still counts, which is what "I started a workout" has always
+    meant here.
+  - **`analytics.volume` and `analytics.frequency` never filtered `deleted_at`** — a pre-existing
+    bug, so a deleted session's tonnage stayed in every total permanently. Fixed here because a
+    deleted plan-only session is exactly the case the rule above is about, and because this phase's
+    own documentation claims these numbers are trustworthy.
+  - **The unique index on `completed_set_id` covered deleted rows**, so a removed line kept holding
+    its set and the *index* refused the next completion — `plans._claimant` filters
+    `deleted_at IS NULL` and the predicate did not, so a domain conflict surfaced as a **500**. The
+    predicate now matches that filter exactly.
+  - **`complete` could adopt an unrelated set through `client_key`.** `sets.log_set` resolves a
+    replay on `(user_id, key)` alone and returns *before* it checks the session or exercise it was
+    handed — correct for a replay, wrong as an input to a link. A reused key handed `complete` a set
+    from another workout, or one since deleted, and adherence claimed it. `_assert_satisfies` now
+    refuses both with a 409 that says the key is the problem.
+  - **`exercises.delete_custom` ignored prescriptions.** `planned_sets.exercise_id` has no
+    `ON DELETE`, so deleting a custom exercise a plan named orphaned the line and `purge_deleted`
+    later hit a **foreign-key violation** rather than purging. It now counts prescribed lines beside
+    logged sets, refuses with both numbers, and moves them under `reassign_to`.
+  - **Migration `0008` spelled its CHECK-constraint names in full**, and the metadata naming
+    convention added the prefix and suffix anyway — the shipped database had
+    `planned_sets_planned_sets_target_rpe_check_check` while the model declared
+    `planned_sets_target_rpe_check`. **`alembic check` does not compare CHECK names**, so this would
+    have drifted silently and forever; `tests/test_migrations.py` now asserts the names the database
+    actually has.
+  - **Two smaller ones:** a duplicated `client_key` inside one `add_planned_sets` call 500'd on the
+    unique index (both lookups run before either row is written, so neither found the other) — now a
+    validation error naming both indexes; and a `plan_session` retry after its lines had been deleted
+    one by one silently rewrote the whole workout, because the replay check asked "does it hold a
+    line *now*?" instead of "did this call already run?".
+- **A second review pass, over the fixes themselves, found three more** — two of them mine:
+  - **Fix 2 relocated the 500 rather than removing it.** Scoping the unique index to live rows made
+    "a deleted line and a live line both name set X" reachable for the first time, and
+    `corrections.restore` cleared `deleted_at` unconditionally — putting two live rows in the index
+    and raising `UniqueViolation` on **the undo**, the one operation that has to work. Two agents
+    reproduced it independently, through the REST path. `restore` now releases a restored line's
+    claim when the set has been taken: it comes back **outstanding**, which is what is true.
+    `restore(entity_type="session")` needed the same guard.
+  - **Fix 1 keyed the frequency exclusion on *live* planned rows**, so deleting the last line of a
+    plan you never started *raised* your training count from 0 to 1 — a destructive correction
+    crediting you with a workout. It now asks whether the session was **ever** a prescription,
+    matching the reasoning `plan_session`'s own replay check already used.
+  - **Fix 4 did not close the purge foreign-key crash it named.** `delete_custom` guards live plan
+    lines, but a *deleted* one still references the exercise, and purge filters each table by its
+    own age — so an exercise removed 90 days ago and a line removed 5 days ago land on opposite
+    sides of any cutoff and `DELETE FROM exercises` raises. Fixed where it actually bites:
+    `corrections.purge` now **skips an exercise anything still points at**, which closes the
+    identical pre-existing hole for `exercise_sets` as well.
+  - Also corrected: a docstring claiming the frequency `EXISTS` pair is "correlated, so evaluated
+    per row" — `EXPLAIN` shows Postgres may hash either into a subplan, since an `OR` prevents a
+    semi-join. The comment now says what is actually true.
+  - Refuted and deliberately left alone: `client_key` being unique per **user** rather than per
+    session (that is the existing, DB-enforced convention `log_set` already has — requirement 5 says
+    to match it); a future-dated plan being swept 12 h after its scheduled start (D31's rule applying
+    uniformly — a plan you never started is a missed session); and mixing explicit and omitted
+    `order_index` in one call.
+
+- **DoD evidence:**
+  - **353 passed, 0 failed** (was 296 → **+57**), ruff + black + `mypy --strict` (147 files) clean.
+    Web `tsc --noEmit` + `eslint .` clean against the regenerated types.
+  - `alembic upgrade head` on a fresh database applies `0008`; **`alembic check` → "No new upgrade
+    operations detected"** (no model/migration drift); `tests/test_migrations.py` proves
+    down-to-base and re-upgrade still work with the new table in `EXPECTED_TABLES`, and asserts the
+    CHECK-constraint names **and the partial-index predicate** the database actually ships —
+    `alembic check` compares neither, so both would otherwise have drifted silently.
+  - The invariant is asserted directly, not assumed: `TestAPlanIsNotTraining` prescribes five sets
+    at 300 kg and asserts `analytics.volume() == []`, `prs.list_prs() == []` and
+    `integrity.verify().ok`, then completes one line and watches tonnage become exactly 500 kg —
+    one completed set, not five prescribed ones. The MCP contract suite asserts the same across the
+    surface a chat client actually uses (volume and `/api/prs` byte-identical before and after a
+    three-line prescription is written).
+  - Driven end to end over HTTP in `tests/routers/test_planned_sets.py`: plan 3 sets → `/active`
+    reports `planned_total: 3, set_count: 0` → volume still empty → complete two → `/progress`
+    returns `66.7%` with the right `next_up` → `/finish` reports the same adherence.
+  - Three pre-existing assertions were updated deliberately, not worked around: the two
+    `tools/list == 33` counts, and the finish-parity projection in `test_mcp_contract.py`, which
+    indexed `rest[k]` for every key the finish response returned and would have raised `KeyError`
+    on the new `adherence` key — it now compares the session fields and asserts `adherence`
+    separately.
+
+- **Notes / decisions:**
+  - **No `status` column on `workout_sessions`.** A plan is not a different kind of workout, it is a
+    workout that has not happened yet — it carries prescribed lines and no logged sets, which the
+    data already answers. Adding a status would re-litigate D31's `ended_at` lifecycle to say
+    something derivable.
+  - **A planned line may carry no target at all.** "Bench press, three sets, work up to something
+    heavy" is a real instruction; requiring a number would mean inventing one. Only a
+    self-contradicting target (a rep range that counts down, a negative load) is refused, in the
+    service *and* by a CHECK constraint.
+  - **`add_planned_sets` validates every line before writing any of them.** Validating as it went
+    would leave a rejected call's earlier lines pending in the session for the next read to
+    autoflush, so "one bad line aborts the call" would have depended on the caller's transaction
+    rolling back rather than on the function.
+  - **Adherence is `null`, not `0`, when nothing was prescribed** — both 0% and 100% would be claims
+    about a plan that never existed.
+  - **Flagged, not changed:** `apps/web/app/(app)/dashboard/page.tsx:144` filters recent sessions
+    with `performed_at >= weekFrom` and **no upper bound**, so a session planned for later this week
+    counts toward "sessions this week" on the home stats and appears in the `DayStrip`. That is a
+    client-side filter over `/api/sessions`, not an API number — `analytics.frequency` is now
+    correct — and the web app has no planning UI yet, so it is left for the phase that builds one.
+  - **Adjacent bug fixed while there:** the missing `deleted_at` filters in `analytics`. Not part of
+    the request, but a deleted session keeping its tonnage forever is the same class of untruth this
+    phase exists to prevent, and it is two predicates with test coverage.
